@@ -6,76 +6,67 @@
   <style>
     body { font-family: sans-serif; background: #111; color: #eee; margin: 0; }
     main { max-width: 960px; margin: 0 auto; padding: 16px; }
-    video { width: 100%; background: #000; border-radius: 8px; }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      object-fit: contain;
+      background: #000;
+      border-radius: 8px;
+    }
     #hint { font-size: 1.4rem; min-height: 2.2em; margin: 12px 0; }
-    #metrics { font-family: monospace; white-space: pre-wrap; }
-    #error { color: #ff8a8a; }
+    #stats, #metrics { font-family: monospace; white-space: pre-wrap; }
   </style>
 </head>
 <body>
   <main>
     <h1>Presage camera preview</h1>
-    <p>Allow the camera if the browser asks. Sit so your face and upper chest are both visible, then hold still.</p>
-    <p id="hint">Starting camera…</p>
-    <video id="video" autoplay playsinline muted></video>
+    <p>This is the SmartSpectra camera feed. Sit so your face and upper chest are both visible.</p>
+    <p id="stats">resolution: waiting · fps: waiting</p>
+    <p id="hint">Waiting for the first SDK frame…</p>
+    <canvas id="preview" width="1280" height="720"></canvas>
     <p id="metrics">Waiting for metrics…</p>
-    <p id="error"></p>
   </main>
   <script>
-    const video = document.getElementById("video");
     const hint = document.getElementById("hint");
     const metrics = document.getElementById("metrics");
-    const errorEl = document.getElementById("error");
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    let sending = false;
+    const stats = document.getElementById("stats");
+    const canvas = document.getElementById("preview");
+    const ctx = canvas.getContext("2d");
 
     const events = new EventSource("/events");
     events.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.hint) hint.textContent = data.hint;
       if (data.metrics) metrics.textContent = data.metrics;
+      const resolution = data.resolution || "waiting";
+      const fps = data.fps || "waiting";
+      stats.textContent = `resolution: ${resolution} · fps: ${fps}`;
     };
 
-    async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-      });
-      video.srcObject = stream;
-      await video.play();
-      hint.textContent = "Camera open. Scoot back so face + upper chest are in view.";
-      requestAnimationFrame(tick);
-    }
-
-    function tick() {
-      if (video.readyState >= 2 && video.videoWidth > 0 && !sending) {
-        sending = true;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        fetch("/frame", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "X-Width": String(canvas.width),
-            "X-Height": String(canvas.height),
-          },
-          body: pixels,
-        }).catch((err) => {
-          errorEl.textContent = String(err);
-        }).finally(() => {
-          sending = false;
-        });
+    async function refreshPreview() {
+      try {
+        const response = await fetch("/preview.rgba?t=" + Date.now(), { cache: "no-store" });
+        if (response.ok) {
+          const width = Number(response.headers.get("X-Width"));
+          const height = Number(response.headers.get("X-Height"));
+          const bytes = new Uint8ClampedArray(await response.arrayBuffer());
+          if (width > 0 && height > 0 && bytes.length >= width * height * 4) {
+            if (canvas.width !== width || canvas.height !== height) {
+              canvas.width = width;
+              canvas.height = height;
+              canvas.style.aspectRatio = `${width} / ${height}`;
+            }
+            ctx.putImageData(new ImageData(bytes, width, height), 0, 0);
+          }
+        }
+      } catch {
+        // keep last frame
       }
-      requestAnimationFrame(tick);
+      setTimeout(refreshPreview, 90);
     }
-
-    startCamera().catch((err) => {
-      errorEl.textContent = "Browser could not open the camera: " + err.message;
-      hint.textContent = "Close Zoom/Teams/other camera apps, then refresh this page.";
-    });
+    refreshPreview();
   </script>
 </body>
 </html>

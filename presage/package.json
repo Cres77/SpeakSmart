@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node src/measure.mjs",
-    "cameras": "node src/measure.mjs --list-cameras"
+    "cameras": "node src/measure.mjs --list-cameras",
+    "check": "node src/check-decode.mjs"
   },
   "dependencies": {
     "@smartspectra/node-sdk": "^3.4.0"
