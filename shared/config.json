@@ -8,7 +8,7 @@
   "excessiveLevel": 0.75,
   "excessiveHoldMs": 1000,
   "excessiveCooldownMs": 3000,
-  "buzzCooldownMs": 2000,
+  "buzzCooldownMs": 3000,
   "buzzFrequencyHz": 350,
   "buzzDurationMs": 150,
   "buzzAmplitude": 0.2,

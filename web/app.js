@@ -11,7 +11,7 @@ import {
   slidePosition,
 } from "/deck.mjs";
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
-import { BUZZ_STORAGE_KEY, buzzCommandError, createBuzzGuard, readBuzzSettings } from "/buzz.mjs";
+import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, readBuzzSettings } from "/buzz.mjs";
 import { createMotionDetector } from "/motion.mjs";
 import {
   SESSION_STORAGE_KEY,
@@ -35,6 +35,8 @@ const button = document.querySelector("#reconnect");
 const buzzSend = document.querySelector("#buzz-send");
 const buzzNote = document.querySelector("#buzz-note");
 const buzzGuard = createBuzzGuard();
+const automaticFeedback = createAutomaticFeedback();
+let lastBuzzReason = "manual";
 const sensorNote = document.querySelector("#sensor-note");
 const sensorTime = document.querySelector("#sensor-time");
 const accelX = document.querySelector("#accel-x");
@@ -184,7 +186,9 @@ function noteMotion(message) {
     magnitude: message.magnitude,
     movement: message.movement,
   };
-  paintMotion(dashboardMotion.push(sample));
+  const live = dashboardMotion.push(sample);
+  paintMotion(live);
+  considerAutomatic(live.excessiveEvent);
   if (!practiceSession || !practiceMotion) return;
   const practice = practiceMotion.push(sample);
   if (practice.gestureEvent) practiceSession = recordGesture(practiceSession, practice.gestureEvent);
@@ -319,7 +323,9 @@ function connectPage() {
       return;
     }
     if (message.type === "buzz") {
-      setBuzzNote("Command sent. No tone was played.");
+      setBuzzNote(lastBuzzReason === "excessive"
+        ? "Excessive movement detected. No tone was played."
+        : "Command sent. No tone was played.");
       return;
     }
     if (message.type === "error" && message.for === "buzz") {
@@ -369,10 +375,14 @@ fetch("/config.json")
       frequency: loaded.buzzFrequencyHz,
       duration: loaded.buzzDurationMs,
       amplitude: loaded.buzzAmplitude,
+      automatic: false,
+      cooldown: loaded.buzzCooldownMs,
     });
     buzzFrequency.value = String(stored.frequency);
     buzzDuration.value = String(stored.duration);
     buzzAmplitude.value = String(stored.amplitude);
+    buzzAutomatic.checked = stored.automatic === true;
+    buzzCooldown.value = String(stored.cooldown);
   })
   .catch(() => {});
 connectPage();
@@ -389,6 +399,8 @@ const navSettings = document.querySelector("#nav-settings");
 const buzzFrequency = document.querySelector("#buzz-frequency");
 const buzzDuration = document.querySelector("#buzz-duration");
 const buzzAmplitude = document.querySelector("#buzz-amplitude");
+const buzzAutomatic = document.querySelector("#buzz-automatic");
+const buzzCooldown = document.querySelector("#buzz-cooldown");
 const buzzTest = document.querySelector("#buzz-test");
 const settingsBuzzNote = document.querySelector("#settings-buzz-note");
 const deckList = document.querySelector("#deck-list");
@@ -485,7 +497,36 @@ function currentBuzzSettings() {
     frequency: Number(buzzFrequency.value),
     duration: Number(buzzDuration.value),
     amplitude: Number(buzzAmplitude.value),
+    automatic: buzzAutomatic.checked === true,
+    cooldown: Number(buzzCooldown.value),
   };
+}
+
+function considerAutomatic(event) {
+  if (!event) return;
+  const settings = currentBuzzSettings();
+  if (settings.automatic !== true) return;
+  const problem = buzzCommandError(settings);
+  if (problem) {
+    setBuzzNote(problem);
+    return;
+  }
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const command = automaticFeedback.decide(event, settings, Date.now(), buzzGuard);
+  if (!command) return;
+  lastBuzzReason = "excessive";
+  if (practiceSession) {
+    practiceSession = recordBuzz(practiceSession, command);
+  }
+  socket.send(JSON.stringify({
+    type: "buzz",
+    role: "browser",
+    frequency: command.frequency,
+    duration: command.duration,
+    amplitude: command.amplitude,
+    timestamp: command.timestamp,
+  }));
+  setBuzzNote("Excessive movement detected. No tone was played.");
 }
 
 function saveBuzzForm() {
@@ -516,8 +557,9 @@ function sendBuzz() {
     amplitude: settings.amplitude,
     timestamp: now,
   };
+  lastBuzzReason = "manual";
   if (practiceSession) {
-    practiceSession = recordBuzz(practiceSession, { ...command, played: false });
+    practiceSession = recordBuzz(practiceSession, { ...command, reason: "manual", played: false });
   }
   socket.send(JSON.stringify(command));
   setBuzzNote("Command sent. Waiting for the coach.");
@@ -855,7 +897,8 @@ function openSession(id) {
     return `${formatWhen(event.timestamp)} · movement ${Math.round(event.movement * 100)}%`;
   });
   fillEventList(sessionBuzzes, session.buzzes, "No buzzes.", (event) => {
-    return `${formatWhen(event.timestamp)} · ${event.frequency} Hz · ${event.duration} ms · amplitude ${event.amplitude} · not played`;
+    const reason = event.reason === "excessive" ? "excessive" : "manual";
+    return `${formatWhen(event.timestamp)} · ${event.frequency} Hz · ${event.duration} ms · amplitude ${event.amplitude} · ${reason} · not played`;
   });
   paintSessionChart(session);
   requestAnimationFrame(() => sessionChart?.resize());
@@ -888,10 +931,11 @@ navPractice.addEventListener("click", showPractice);
 navSettings.addEventListener("click", showSettings);
 buzzSend.addEventListener("click", sendBuzz);
 buzzTest.addEventListener("click", sendBuzz);
-for (const field of [buzzFrequency, buzzDuration, buzzAmplitude]) {
+for (const field of [buzzFrequency, buzzDuration, buzzAmplitude, buzzCooldown]) {
   field.addEventListener("input", saveBuzzForm);
   field.addEventListener("change", saveBuzzForm);
 }
+buzzAutomatic.addEventListener("change", saveBuzzForm);
 practiceStart.addEventListener("click", beginPractice);
 practiceStop.addEventListener("click", finishPractice);
 sessionBack.addEventListener("click", () => {

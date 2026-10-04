@@ -49,7 +49,7 @@ A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page c
 6. Record practice sessions. Done in the browser. Start practice while presenting, then review the saved session under Practice. Sessions stay in `localStorage` under `speaksmart.sessions`, separate from decks.
 7. Gesture and excessive-movement detection. Done on the page from the server's smoothed magnitude and movement score. A practice review lists the events from that practice. Buzz stays empty. No tone and no coaching sentence.
 8. Manual buzz command. Done. Settings stores frequency, duration, and amplitude in this browser. Buzz FreeWili and Test Buzz each send one command. The pulse cannot be retriggered until its duration has elapsed. The stand-in replies `played: false`. No automatic buzz.
-9. Automatic buzz with cooldown.
+9. Automatic buzz with cooldown. Done. Settings can turn on automatic movement feedback. It is off by default. An excessive hold sends one buzz, then waits `buzzCooldownMs` (3000 ms) before another. The acknowledgement stays `played: false`.
 10. Session analytics and coaching summary.
 
 Thresholds live in `shared/config.json`: sample rate, movement, gesture magnitude and timing, stillness, excessive level and timing, and buzz cooldown, frequency, duration, and amplitude. The page reads that file. Firmware does not apply it.

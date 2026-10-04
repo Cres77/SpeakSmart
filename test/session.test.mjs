@@ -163,9 +163,21 @@ test("a manual buzz sent during practice is stored as not played", () => {
     frequency: 350,
     duration: 150,
     amplitude: 0.2,
+    reason: "manual",
     played: false,
   }]);
   const loaded = readSessions(JSON.stringify({ sessions: [saved] }));
   assert.deepEqual(loaded.sessions[0].buzzes, saved.buzzes);
   assert.equal(loaded.sessions[0].buzzes.some((event) => event.played === true), false);
+  session = recordBuzz(saved, {
+    timestamp: startedAt + 90,
+    frequency: 440,
+    duration: 200,
+    amplitude: 0.3,
+    reason: "excessive",
+    played: false,
+  });
+  const withReason = stopSession(session, startedAt + 200);
+  assert.equal(withReason.buzzes[1].reason, "excessive");
+  assert.equal(withReason.buzzes[1].played, false);
 });

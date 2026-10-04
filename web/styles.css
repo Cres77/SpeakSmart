@@ -357,6 +357,19 @@ h2 {
 
 .grow { flex: 1 1 220px; }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--blue);
+}
+
 .field {
   display: grid;
   gap: 6px;

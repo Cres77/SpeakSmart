@@ -1,7 +1,8 @@
 /* Practice sessions. These are not slide decks and they are not coach messages.
  * The page stores them in localStorage under SESSION_STORAGE_KEY.
  * gestures and excessive hold events the motion rules recorded during that practice.
- * buzzes holds manual buzz commands sent during that practice. played stays false.
+ * buzzes holds buzz commands sent during that practice.
+ * reason is "manual" or "excessive". played stays false.
  */
 
 import { CHART_BUCKET_MS } from "./intensity-series.mjs";
@@ -24,11 +25,14 @@ function buzzEvent(event) {
   if (![event.timestamp, event.frequency, event.duration, event.amplitude].every((value) => Number.isFinite(value))) {
     return null;
   }
+  const reason = event.reason == null ? "manual" : event.reason;
+  if (reason !== "manual" && reason !== "excessive") return null;
   return {
     timestamp: event.timestamp,
     frequency: event.frequency,
     duration: event.duration,
     amplitude: event.amplitude,
+    reason,
     played: false,
   };
 }
@@ -139,6 +143,7 @@ export function stopSession(session, stoppedAt) {
       frequency: event.frequency,
       duration: event.duration,
       amplitude: event.amplitude,
+      reason: event.reason === "excessive" ? "excessive" : "manual",
       played: false,
     })),
   };

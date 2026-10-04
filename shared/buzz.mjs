@@ -1,4 +1,8 @@
-/* Manual buzz settings and the click guard. This does not play a tone. */
+/* Buzz settings, the click guard, and automatic movement feedback.
+ * This does not play a tone. Automatic feedback sends at most one command
+ * for an excessive event, then waits out buzzCooldownMs. It does not schedule
+ * another command by itself.
+ */
 
 export const BUZZ_STORAGE_KEY = "speaksmart.buzz";
 
@@ -7,6 +11,8 @@ export function readBuzzSettings(raw, defaults) {
     frequency: defaults.frequency,
     duration: defaults.duration,
     amplitude: defaults.amplitude,
+    automatic: defaults.automatic === true,
+    cooldown: Number.isFinite(defaults.cooldown) ? defaults.cooldown : 3000,
   };
   let parsed = raw;
   if (typeof raw === "string") {
@@ -21,6 +27,8 @@ export function readBuzzSettings(raw, defaults) {
     frequency: Number.isFinite(parsed.frequency) ? parsed.frequency : fallback.frequency,
     duration: Number.isFinite(parsed.duration) ? parsed.duration : fallback.duration,
     amplitude: Number.isFinite(parsed.amplitude) ? parsed.amplitude : fallback.amplitude,
+    automatic: parsed.automatic === true,
+    cooldown: Number.isFinite(parsed.cooldown) ? parsed.cooldown : fallback.cooldown,
   };
 }
 
@@ -42,6 +50,28 @@ export function createBuzzGuard() {
       if (now < until) return false;
       until = now + durationMs;
       return true;
+    },
+  };
+}
+
+export function createAutomaticFeedback() {
+  let cooldownUntil = -Infinity;
+  return {
+    decide(event, settings, now, guard) {
+      if (!event || !settings || settings.automatic !== true) return null;
+      if (!Number.isFinite(now)) return null;
+      const cooldown = Number.isFinite(settings.cooldown) ? settings.cooldown : 0;
+      if (now < cooldownUntil) return null;
+      if (guard && !guard.trySend(now, settings.duration)) return null;
+      cooldownUntil = now + cooldown;
+      return {
+        frequency: settings.frequency,
+        duration: settings.duration,
+        amplitude: settings.amplitude,
+        timestamp: now,
+        reason: "excessive",
+        played: false,
+      };
     },
   };
 }
