@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SpeakSmart camera preview</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #eee; margin: 0; }
+    main { max-width: 960px; margin: 0 auto; padding: 16px; }
+    video { width: 100%; background: #000; border-radius: 8px; }
+    #hint { font-size: 1.4rem; min-height: 2.2em; margin: 12px 0; }
+    #metrics { font-family: monospace; white-space: pre-wrap; }
+    #error { color: #ff8a8a; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Presage camera preview</h1>
+    <p>Allow the camera if the browser asks. Sit so your face and upper chest are both visible, then hold still.</p>
+    <p id="hint">Starting camera…</p>
+    <video id="video" autoplay playsinline muted></video>
+    <p id="metrics">Waiting for metrics…</p>
+    <p id="error"></p>
+  </main>
+  <script>
+    const video = document.getElementById("video");
+    const hint = document.getElementById("hint");
+    const metrics = document.getElementById("metrics");
+    const errorEl = document.getElementById("error");
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    let sending = false;
+
+    const events = new EventSource("/events");
+    events.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.hint) hint.textContent = data.hint;
+      if (data.metrics) metrics.textContent = data.metrics;
+    };
+
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+      });
+      video.srcObject = stream;
+      await video.play();
+      hint.textContent = "Camera open. Scoot back so face + upper chest are in view.";
+      requestAnimationFrame(tick);
+    }
+
+    function tick() {
+      if (video.readyState >= 2 && video.videoWidth > 0 && !sending) {
+        sending = true;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        fetch("/frame", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Width": String(canvas.width),
+            "X-Height": String(canvas.height),
+          },
+          body: pixels,
+        }).catch((err) => {
+          errorEl.textContent = String(err);
+        }).finally(() => {
+          sending = false;
+        });
+      }
+      requestAnimationFrame(tick);
+    }
+
+    startCamera().catch((err) => {
+      errorEl.textContent = "Browser could not open the camera: " + err.message;
+      hint.textContent = "Close Zoom/Teams/other camera apps, then refresh this page.";
+    });
+  </script>
+</body>
+</html>

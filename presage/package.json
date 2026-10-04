@@ -1,0 +1,16 @@
+{
+  "name": "speaksmart-presage-poc",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/measure.mjs",
+    "cameras": "node src/measure.mjs --list-cameras"
+  },
+  "dependencies": {
+    "@smartspectra/node-sdk": "^3.4.0"
+  }
+}
