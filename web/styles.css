@@ -277,10 +277,16 @@ h2 {
 
 #sensor-note,
 #sensor-time,
-#sensor-units {
+#sensor-units,
+#chart-note {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 14px;
+}
+
+.chart-wrap {
+  height: 240px;
+  margin-top: 16px;
 }
 
 .note { padding: 22px 28px; }

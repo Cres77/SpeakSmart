@@ -13,6 +13,7 @@
     "firmware:test": "make -C firmware test"
   },
   "dependencies": {
+    "chart.js": "4.4.6",
     "ws": "^8.18.3"
   }
 }

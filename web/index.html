@@ -74,13 +74,22 @@
             <p id="sensor-units">Units unknown. These values are not converted.</p>
           </section>
 
+          <section class="card chart-card" aria-labelledby="chart-heading">
+            <h2 id="chart-heading">Movement</h2>
+            <p id="chart-note">Last 60 seconds of intensity. A disconnect or a new coach hello clears this line.</p>
+            <div class="chart-wrap">
+              <canvas id="intensity-chart" aria-label="Movement intensity over time" role="img"></canvas>
+            </div>
+          </section>
+
           <section class="note">
             <h2>What comes next</h2>
-            <p>A movement graph and slides come in later phases. This page shows the link, the latest X, Y, and Z, and one intensity.</p>
+            <p>Slides come in a later phase. This page shows the link, the latest X, Y, and Z, intensity, and that intensity over the last minute.</p>
           </section>
         </main>
       </div>
     </div>
-    <script src="/app.js"></script>
+    <script src="/chart.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

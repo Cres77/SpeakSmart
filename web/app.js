@@ -1,3 +1,5 @@
+import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
+
 const label = document.querySelector("#coach-label");
 const dot = document.querySelector("#coach-dot");
 const detail = document.querySelector("#coach-detail");
@@ -12,6 +14,9 @@ const accelZ = document.querySelector("#accel-z");
 const intensityValue = document.querySelector("#intensity-value");
 const intensityMeter = document.querySelector("#intensity-meter");
 const intensityBar = document.querySelector("#intensity-bar");
+const chartCanvas = document.querySelector("#intensity-chart");
+const series = createIntensitySeries();
+let chartSession = null;
 
 const labels = {
   connected: "Connected",
@@ -41,6 +46,78 @@ function formatSampleTime(timestamp) {
     return `Sample ${clock}.${ms}`;
   }
   return `Sample timestamp ${timestamp}`;
+}
+
+function formatChartTime(timestamp) {
+  if (timestamp >= 1_000_000_000_000) {
+    return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }
+  return String(Math.round(timestamp));
+}
+
+const chart = globalThis.Chart
+  ? new globalThis.Chart(chartCanvas, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            data: [],
+            borderColor: "#1e4d6b",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.25,
+          },
+        ],
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: {
+            type: "linear",
+            title: { display: true, text: "Time", color: "#5e6874" },
+            ticks: {
+              maxTicksLimit: 6,
+              color: "#5e6874",
+              callback: (value) => formatChartTime(value),
+            },
+            grid: { color: "#e4dacb" },
+          },
+          y: {
+            min: 0,
+            max: 100,
+            title: { display: true, text: "Intensity", color: "#5e6874" },
+            ticks: {
+              color: "#5e6874",
+              callback: (value) => `${value}%`,
+            },
+            grid: { color: "#e4dacb" },
+          },
+        },
+      },
+    })
+  : null;
+
+function paintChart() {
+  if (!chart) return;
+  chart.data.datasets[0].data = series.points.map((point) => ({ x: point.timestamp, y: point.intensity }));
+  const newest = series.points.at(-1)?.timestamp;
+  if (newest == null) {
+    delete chart.options.scales.x.min;
+    delete chart.options.scales.x.max;
+  } else {
+    chart.options.scales.x.min = newest - CHART_WINDOW_MS;
+    chart.options.scales.x.max = newest;
+  }
+  chart.update("none");
+}
+
+function clearChart() {
+  series.reset();
+  paintChart();
 }
 
 function clearSample() {
@@ -73,6 +150,7 @@ function renderSample(message) {
   accelY.textContent = formatAxis(message.accel.y);
   accelZ.textContent = formatAxis(message.accel.z);
   renderIntensity(message.movement);
+  if (series.push(message.timestamp, message.movement).action !== "ignore") paintChart();
   sensorTime.textContent = formatSampleTime(message.timestamp);
   const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
   sensorNote.textContent = standIn
@@ -165,6 +243,10 @@ function connectPage() {
     }
     if (message.type !== "link") return;
     latestLink = message;
+    const nextSession = Number.isInteger(message.session) ? message.session : chartSession;
+    const sessionChanged = nextSession !== chartSession;
+    if (sessionChanged) chartSession = nextSession;
+    if (sessionChanged || message.status === "disconnected") clearChart();
     renderStatus(message.status);
     renderDetail(message);
   });

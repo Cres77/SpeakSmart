@@ -91,11 +91,14 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
   "status": "connected",
   "deviceId": "dev-stand-in",
   "transport": "development-stand-in",
-  "lastSeen": 1710000002000
+  "lastSeen": 1710000002000,
+  "session": 1
 }
 ```
 
 `status` is `connected`, `connecting`, or `disconnected`. During a reconnect the status stays `connecting` until the next coach `hello` or until `reconnectGraceMs` (5000) expires.
+
+`session` starts at 0 and increases by one on each coach `hello`. Heartbeats keep the same number. The page uses it to tell a new hello from a heartbeat.
 
 `sensor` — the coach sample, plus the server's intensity. `movement` is a number from 0 to 1. 1 means 100%. The browser does not calculate it.
 
@@ -121,6 +124,15 @@ Intensity is one formula, in `shared/movement.mjs`, applied by the server:
 4. Divide by `movementThreshold` from `shared/config.json` (0.35). At the threshold the score is 1, which the page shows as 100%. Above the threshold the score stays at 1. Below it the score is the fraction of the threshold. Negative results are clamped to 0.
 
 A new coach `hello` starts a new baseline. Disconnecting clears it.
+
+The page plots `movement` as 0–100% against the sample timestamp. It does not plot X, Y, or Z. Chart.js draws the line. The trace is not a server message.
+
+Downsample and window, in `shared/intensity-series.mjs`:
+
+- Samples stay at `sampleRateHz` for the percent and the meter.
+- The chart keeps one point per 250 ms bucket, about 4 points per second. The point is that bucket's latest intensity and that sample's timestamp.
+- Points older than 60 seconds before the newest timestamp are dropped. The series also caps at 241 points.
+- A new coach `hello` (`session` changes) clears the line. A `disconnected` link clears it too, so a stale trace is not left up. A reconnect stays `connecting` until the next hello, and that hello clears the line. Before the first sample the chart is blank, with Time and Intensity axes and no error.
 
 ### Server → coach
 
@@ -173,4 +185,4 @@ Neither documents a frequency range, so 300–400 Hz is expressible and not conf
 
 ## Limits
 
-Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. The server adds intensity on the sample it forwards to the browser. There is no slideshow, calibration, session store, or chart. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it. Sampling still does no network I/O. The radio poll still sends at most one queued sample on a non-blocking link.
+Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. The server adds intensity on the sample it forwards to the browser. The page draws that intensity. There is no slideshow, calibration, or session store. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it. Sampling still does no network I/O. The radio poll still sends at most one queued sample on a non-blocking link.

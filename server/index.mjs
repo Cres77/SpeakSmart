@@ -13,9 +13,17 @@ const webRoot = join(root, "web");
 const MAX_FRAME = 4096;
 
 const files = {
-  "/": { name: "index.html", type: "text/html; charset=utf-8" },
-  "/styles.css": { name: "styles.css", type: "text/css; charset=utf-8" },
-  "/app.js": { name: "app.js", type: "text/javascript; charset=utf-8" },
+  "/": { file: join(webRoot, "index.html"), type: "text/html; charset=utf-8" },
+  "/styles.css": { file: join(webRoot, "styles.css"), type: "text/css; charset=utf-8" },
+  "/app.js": { file: join(webRoot, "app.js"), type: "text/javascript; charset=utf-8" },
+  "/intensity-series.mjs": {
+    file: join(root, "shared/intensity-series.mjs"),
+    type: "text/javascript; charset=utf-8",
+  },
+  "/chart.js": {
+    file: join(root, "node_modules/chart.js/dist/chart.umd.js"),
+    type: "text/javascript; charset=utf-8",
+  },
 };
 
 function sendJson(socket, message) {
@@ -42,6 +50,7 @@ export async function startCoachServer(options = {}) {
   let heartbeatTimer = null;
   let standInChild = null;
   let boundPort = port;
+  let session = 0;
 
   function linkMessage() {
     return {
@@ -51,6 +60,7 @@ export async function startCoachServer(options = {}) {
       deviceId,
       transport,
       lastSeen,
+      session,
     };
   }
 
@@ -153,6 +163,7 @@ export async function startCoachServer(options = {}) {
     device = socket;
     clearGrace();
     reconnectPending = false;
+    session += 1;
     movementTracker.reset();
     setConnected({
       deviceId: message.deviceId,
@@ -177,7 +188,7 @@ export async function startCoachServer(options = {}) {
       return;
     }
     res.writeHead(200, { "Content-Type": entry.type, "Cache-Control": "no-store" });
-    res.end(readFileSync(join(webRoot, entry.name)));
+    res.end(readFileSync(entry.file));
   });
 
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
