@@ -1,7 +1,7 @@
 "use client";
 
 import { deleteSessionAction } from "@/app/actions";
-import { deleteAsset, handMotionKey, recordingKey, slideshowKey } from "@/lib/idb";
+import { deleteAsset, freewiliMotionKey, handMotionKey, recordingKey, slideshowKey } from "@/lib/idb";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -34,6 +34,7 @@ export function DeleteSessionButton({
       deleteAsset(slideshowKey(sessionId)),
       deleteAsset(recordingKey(sessionId)),
       deleteAsset(handMotionKey(sessionId)),
+      deleteAsset(freewiliMotionKey(sessionId)),
     ]);
     setOpen(false);
     onDeleted?.();

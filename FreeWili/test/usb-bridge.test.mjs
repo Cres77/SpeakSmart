@@ -98,7 +98,7 @@ import queue, sys, threading, time
 from pathlib import Path
 sys.path.insert(0, str(Path("bridge").resolve()))
 from freewili_usb import motion_axes, play_pulse
-from coach_bridge import SampleQueue, serve_link
+from freewili_bridge import SampleQueue, serve_link
 
 samples = SampleQueue(8)
 commands = queue.Queue()

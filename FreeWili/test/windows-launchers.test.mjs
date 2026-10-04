@@ -67,7 +67,9 @@ test("start-windows.bat is plain batch and installs the three tools", () => {
   assert.match(start, /py -3 -m pip install -r bridge\\requirements\.txt/);
   assert.match(start, /call npm install/);
   assert.match(start, /call npm start/);
-  assert.match(start, /http:\/\/127\.0\.0\.1:4173\//);
+  assert.match(start, /ws:\/\/127\.0\.0\.1:4173\/ws/);
+  assert.doesNotMatch(start, /__open/);
+  assert.doesNotMatch(start, /start "" "http:\/\/127\.0\.0\.1:4173\/"/);
   assert.match(start, /Python was not found/);
   assert.match(start, /\bpause\b/);
   assert.match(start, /__setup/);

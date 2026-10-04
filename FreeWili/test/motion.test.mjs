@@ -63,10 +63,10 @@ function aboveSpan(trace, threshold) {
 }
 
 test("detection settings come from shared config", () => {
-  assert.equal(config.gestureThreshold, 0.5);
+  assert.equal(config.gestureThreshold, 1.5);
   assert.equal(config.gestureMinDurationMs, 200);
   assert.equal(config.gestureCooldownMs, 400);
-  assert.equal(config.stillnessThreshold, 0.08);
+  assert.equal(config.stillnessThreshold, 0.24);
   assert.equal(config.excessiveLevel, 0.75);
   assert.equal(config.excessiveHoldMs, 1000);
   assert.equal(config.excessiveCooldownMs, 3000);
@@ -155,7 +155,7 @@ test("a score at the excessive level for less than a second is not excessive", (
   const held = Math.floor(800 / stepMs);
   const result = feed([
     ...series({ x: 0, y: 0, z: 1 }, 8, start),
-    ...steadyGap(0.4, held, start + 8 * stepMs),
+    ...steadyGap(1.0, held, start + 8 * stepMs),
   ]);
   const high = result.trace.filter((sample) => sample.movement >= config.excessiveLevel);
   assert.ok(high.length > 1);
@@ -170,7 +170,7 @@ test("holding the excessive level for the hold time records one event", () => {
   const held = Math.ceil((config.excessiveHoldMs + 400) / stepMs);
   const result = feed([
     ...series({ x: 0, y: 0, z: 1 }, 8, start),
-    ...steadyGap(0.4, held, start + 8 * stepMs),
+    ...steadyGap(1.0, held, start + 8 * stepMs),
   ]);
   const high = result.trace.filter((sample) => sample.movement >= config.excessiveLevel);
   assert.ok(high[high.length - 1].timestamp - high[0].timestamp >= config.excessiveHoldMs);

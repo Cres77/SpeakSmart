@@ -31,7 +31,7 @@ from freewili_usb import (  # noqa: E402
     sample_window_lines,
     select_device,
 )
-from coach_bridge import SampleQueue, run_coach, sensor_message  # noqa: E402
+from freewili_bridge import SampleQueue, run_coach, sensor_message  # noqa: E402
 
 
 class Usb:

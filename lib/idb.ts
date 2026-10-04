@@ -60,3 +60,7 @@ export function audienceQaKey(sessionId: string) {
 export function handMotionKey(sessionId: string) {
   return `hand-motion:${sessionId}`;
 }
+
+export function freewiliMotionKey(sessionId: string) {
+  return `freewili-motion:${sessionId}`;
+}

@@ -50,9 +50,9 @@ test("an excessive count of 2 produces the 75% line with 2", () => {
 });
 
 test("a flat zero session is Uneven and does not get the movement continued line", () => {
-  assert.equal(config.stillnessThreshold, 0.08);
-  assert.equal(config.movementThreshold, 0.35);
-  assert.equal(config.stillnessThreshold / config.movementThreshold, 0.08 / 0.35);
+  assert.equal(config.stillnessThreshold, 0.24);
+  assert.equal(config.movementThreshold, 1.05);
+  assert.equal(config.stillnessThreshold / config.movementThreshold, 0.24 / 1.05);
   const stored = session({
     samples: Array.from({ length: 10 }, () => ({ movement: 0 })),
   });

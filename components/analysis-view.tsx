@@ -3,8 +3,9 @@
 import { transcribeSessionAction, writeCoachingAction } from "@/app/actions";
 import { buildSessionSuggestions, sessionScores } from "@/lib/analysis-coach";
 import { DeleteSessionButton } from "@/components/delete-session-button";
+import { parseFreewiliReport, type FreewiliReport } from "@/lib/freewili-link";
 import { handAt, handMovementNote, type HandSample } from "@/lib/hand-motion";
-import { getAsset, handMotionKey, recordingKey } from "@/lib/idb";
+import { freewiliMotionKey, getAsset, handMotionKey, recordingKey } from "@/lib/idb";
 import type { PracticeSession, SessionFrame, Suggestion } from "@/lib/schema";
 import { AUDIENCE_QUESTIONS_MARKER } from "@/lib/transcript-marker";
 import Link from "next/link";
@@ -35,6 +36,7 @@ export function AnalysisView({
   const [coachState, setCoachState] = useState<"idle" | "writing" | "ready" | "error">("idle");
   const [coachError, setCoachError] = useState<string | null>(null);
   const [hands, setHands] = useState<HandSample[]>([]);
+  const [freewili, setFreewili] = useState<FreewiliReport | null>(null);
   const frame = frames[selected] ?? frames[0];
 
   async function transcribe(blob: Blob) {
@@ -73,6 +75,16 @@ export function AnalysisView({
       } catch {
         setHands([]);
       }
+    });
+  }, [session.id]);
+
+  useEffect(() => {
+    void getAsset<string>(freewiliMotionKey(session.id)).then((raw) => {
+      if (typeof raw !== "string") {
+        setFreewili(null);
+        return;
+      }
+      setFreewili(parseFreewiliReport(raw));
     });
   }, [session.id]);
 
@@ -200,6 +212,7 @@ export function AnalysisView({
           {scores.metrics.length === 0 ? (
             <p className="mt-4 text-sm text-[var(--muted)]">End a recording to score this session.</p>
           ) : null}
+          <FreewiliGrade report={freewili} />
         </section>
 
         <section className="flex min-h-0 flex-col">
@@ -411,6 +424,89 @@ function clarifyPresageSuggestion(item: Suggestion): Suggestion {
     title: "Presage never opened this recording",
     body: "SmartSpectra was handed the saved video, and that file is not a camera it can open. Record again with your face in the preview. Measurement now uses those live frames.",
   };
+}
+
+function FreewiliGrade({ report }: { report: FreewiliReport | null }) {
+  return (
+    <div className="mt-8 border-t border-[var(--border)] pt-6">
+      <h3 className="text-sm font-semibold tracking-tight">Hand movement</h3>
+      {!report ? (
+        <p className="mt-2 text-sm text-[var(--muted)]">No FreeWili movement was recorded for this session.</p>
+      ) : (
+        <>
+          <p className="mt-3 text-4xl font-semibold tracking-tight">
+            {report.grade.letter}
+            <span className="ml-2 text-base font-medium text-[var(--muted)] tabular-nums">{report.grade.score} / 100</span>
+          </p>
+          <dl className="mt-4 grid grid-cols-2 gap-2">
+            <Mini label="Duration" value={formatMs(report.durationMs)} />
+            <Mini label="Average intensity" value={`${report.averageIntensity}%`} />
+            <Mini label="Gestures" value={String(report.gestures)} />
+            <Mini label="Excessive" value={String(report.excessive)} />
+            <Mini label="Stillness" value={`${report.stillnessPercent}%`} />
+            <Mini label="Start buzz" value={buzzLabel(report)} />
+          </dl>
+          <IntensityChart series={report.series} durationMs={report.durationMs} />
+          {report.lines?.length ? (
+            <ul className="mt-3 space-y-1.5 text-xs text-[var(--muted)]">
+              {report.lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Mini({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] tracking-wide text-[var(--muted)] uppercase">{label}</dt>
+      <dd className="text-sm font-medium tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+function buzzLabel(report: FreewiliReport) {
+  const buzz = report.buzzes?.find((item) => item.reason === "record-start");
+  if (!buzz) return "Not sent";
+  return buzz.played ? "Played" : "Sent";
+}
+
+function IntensityChart({
+  series,
+  durationMs,
+}: {
+  series: { t: number; intensity: number }[];
+  durationMs: number;
+}) {
+  const points = Array.isArray(series) ? series.filter((point) => Number.isFinite(point.t) && Number.isFinite(point.intensity)) : [];
+  if (!points.length) return null;
+  const duration = Math.max(durationMs, points[points.length - 1]?.t ?? 0, 1);
+  let drawing = false;
+  const d = points
+    .map((point) => {
+      const x = (point.t / duration) * 100;
+      const y = 8 + (1 - Math.min(100, Math.max(0, point.intensity)) / 100) * 84;
+      const cmd = drawing ? "L" : "M";
+      drawing = true;
+      return `${cmd} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+  return (
+    <div className="mt-4">
+      <p className="text-[10px] tracking-wide text-[var(--muted)] uppercase">Intensity</p>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="mt-1 h-24 w-full">
+        <path d={d} fill="none" stroke="#635bff" strokeWidth="1.6" />
+      </svg>
+      <div className="flex justify-between text-[10px] text-[var(--muted)]">
+        <span>0:00</span>
+        <span>{formatMs(duration)}</span>
+      </div>
+    </div>
+  );
 }
 
 function SeverityBadge({ severity }: { severity: Suggestion["severity"] }) {

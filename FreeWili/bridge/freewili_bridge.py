@@ -1,4 +1,4 @@
-"""Coach WebSocket client. Hardware calls stay in freewili_usb.py.
+"""FreeWili bridge WebSocket client. Hardware calls stay in freewili_usb.py.
 
 Speaks FreeWili/shared/PROTOCOL.md: hello, heartbeat, sensor, buzz ack.
 Samples are queued. The WebSocket send runs on another thread.

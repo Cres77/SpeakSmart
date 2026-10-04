@@ -1,22 +1,20 @@
 @echo off
 cd /d "%~dp0"
-if /I "%~1"=="__open" goto open_when_ready
 if /I "%~1"=="__setup" goto setup_only
 
-title SpeakSmart coach
-echo SpeakSmart coach
+title FreeWili bridge
+echo FreeWili bridge
 echo.
 call :setup
 if errorlevel 1 exit /b 1
 
 echo.
-echo Starting the coach at http://127.0.0.1:4173/
-echo The page opens once that address is listening.
-start "SpeakSmart page" /MIN "%~f0" __open
+echo Starting the FreeWili bridge. It does not open a web page.
+echo The SpeakSmart website connects to ws://127.0.0.1:4173/ws while you record.
 call npm start
 if errorlevel 1 (
   echo.
-  echo The coach stopped because of an error.
+  echo The FreeWili bridge stopped because of an error.
   pause
   exit /b 1
 )
@@ -87,7 +85,7 @@ echo OneWili is downloaded from Git. This can take a few minutes.
 call :run_pip
 if errorlevel 1 (
   echo.
-  echo pip could not install bridge\requirements.txt. The coach was not started.
+  echo pip could not install bridge\requirements.txt. The FreeWili bridge was not started.
   pause
   exit /b 1
 )
@@ -97,7 +95,7 @@ echo Installing Node packages.
 call npm install
 if errorlevel 1 (
   echo.
-  echo npm install failed. The coach was not started.
+  echo npm install failed. The FreeWili bridge was not started.
   pause
   exit /b 1
 )
@@ -184,20 +182,3 @@ exit /b %ERRORLEVEL%
 :pip_plain
 "%PYEXE%" -m pip install -r bridge\requirements.txt
 exit /b %ERRORLEVEL%
-
-:open_when_ready
-set /a OPEN_TRIES=0
-:open_wait
-set /a OPEN_TRIES+=1
-if %OPEN_TRIES% GTR 90 (
-  echo http://127.0.0.1:4173/ did not answer, so the browser was not opened.
-  exit /b 1
-)
-curl.exe -fsS -o NUL --max-time 2 http://127.0.0.1:4173/health >nul 2>&1
-if not errorlevel 1 goto open_now
-timeout /t 1 /nobreak >nul
-goto open_wait
-
-:open_now
-start "" "http://127.0.0.1:4173/"
-exit /b 0

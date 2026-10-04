@@ -1,5 +1,4 @@
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,50 +9,7 @@ import { pythonMissingMessage, resolvePython } from "../shared/python.mjs";
 import { inspectClientMessage } from "../shared/protocol.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const webRoot = join(root, "web");
 const MAX_FRAME = 4096;
-
-const files = {
-  "/": { file: join(webRoot, "index.html"), type: "text/html; charset=utf-8" },
-  "/styles.css": { file: join(webRoot, "styles.css"), type: "text/css; charset=utf-8" },
-  "/app.js": { file: join(webRoot, "app.js"), type: "text/javascript; charset=utf-8" },
-  "/intensity-series.mjs": {
-    file: join(root, "shared/intensity-series.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/deck.mjs": {
-    file: join(root, "shared/deck.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/session.mjs": {
-    file: join(root, "shared/session.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/summary.mjs": {
-    file: join(root, "shared/summary.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/motion.mjs": {
-    file: join(root, "shared/motion.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/config.json": {
-    file: join(root, "shared/config.json"),
-    type: "application/json; charset=utf-8",
-  },
-  "/buzz.mjs": {
-    file: join(root, "shared/buzz.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/calibration.mjs": {
-    file: join(root, "shared/calibration.mjs"),
-    type: "text/javascript; charset=utf-8",
-  },
-  "/chart.js": {
-    file: join(root, "node_modules/chart.js/dist/chart.umd.js"),
-    type: "text/javascript; charset=utf-8",
-  },
-};
 
 function sendJson(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
@@ -182,7 +138,7 @@ export async function startCoachServer(options = {}) {
       console.error(pythonMissingMessage());
       return;
     }
-    const script = fileURLToPath(new URL("../bridge/coach_bridge.py", import.meta.url));
+    const script = fileURLToPath(new URL("../bridge/freewili_bridge.py", import.meta.url));
     usbChild = spawn(python.command, [...python.args, script], {
       cwd: root,
       env: {
@@ -234,14 +190,8 @@ export async function startCoachServer(options = {}) {
       res.end(JSON.stringify({ ok: true, status, transport }));
       return;
     }
-    const entry = req.method === "GET" ? files[url.pathname] : undefined;
-    if (!entry) {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("not found");
-      return;
-    }
-    res.writeHead(200, { "Content-Type": entry.type, "Cache-Control": "no-store" });
-    res.end(readFileSync(entry.file));
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("not found");
   });
 
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
@@ -450,7 +400,7 @@ if (isMain()) {
     ? `USB bridge is on. Looking for FreeWili ${serial}.`
     : "USB bridge is on. Looking for a FreeWili.";
   const app = await startCoachServer({ standIn, usbBridge: !standIn });
-  console.log(`SpeakSmart coach  ${app.url}`);
+  console.log(`FreeWili bridge  ${app.url}`);
   console.log(standIn ? "Development stand-in is on. It is not a FreeWili." : looking);
   const shutdown = () => {
     app.close().then(() => process.exit(0));

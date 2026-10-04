@@ -1,10 +1,10 @@
 {
   "sampleRateHz": 50,
-  "movementThreshold": 0.35,
-  "gestureThreshold": 0.5,
+  "movementThreshold": 1.05,
+  "gestureThreshold": 1.5,
   "gestureMinDurationMs": 200,
   "gestureCooldownMs": 400,
-  "stillnessThreshold": 0.08,
+  "stillnessThreshold": 0.24,
   "excessiveLevel": 0.75,
   "excessiveHoldMs": 1000,
   "excessiveCooldownMs": 3000,

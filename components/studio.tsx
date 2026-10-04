@@ -3,7 +3,8 @@
 import { cancelSessionAction, finishRecordingAction, prepareAudienceQuestionsAction, setShowCameraAction } from "@/app/actions";
 import { startHandCapture } from "@/lib/hand-capture";
 import type { HandSample } from "@/lib/hand-motion";
-import { audienceQaKey, deleteAsset, getAsset, handMotionKey, putAsset, recordingKey, slideshowKey } from "@/lib/idb";
+import { startFreewiliLink, type FreewiliLink, type FreewiliReport } from "@/lib/freewili-link";
+import { audienceQaKey, deleteAsset, freewiliMotionKey, getAsset, handMotionKey, putAsset, recordingKey, slideshowKey } from "@/lib/idb";
 import { loadOpenCv } from "@/lib/opencv";
 import { startPresageCapture } from "@/lib/presage-capture";
 import { createRecordingMix, type RecordingMix } from "@/lib/recording-mix";
@@ -48,6 +49,7 @@ export function Studio({
   const qaBeatRef = useRef<QaBeat>("off");
   const presageStopRef = useRef<((abort?: boolean) => Promise<unknown>) | null>(null);
   const handsStopRef = useRef<(() => Promise<HandSample[]>) | null>(null);
+  const freewiliRef = useRef<FreewiliLink | null>(null);
 
   const [phase, setPhase] = useState<Phase>("preview");
   const [showCamera, setShowCamera] = useState(initialShowCamera);
@@ -67,10 +69,20 @@ export function Studio({
   const [qaError, setQaError] = useState<string | null>(null);
   const [presageHint, setPresageHint] = useState<string | null>(null);
   const [handScore, setHandScore] = useState<number | null>(null);
+  const [freewiliConnected, setFreewiliConnected] = useState(false);
   const [audienceQa, setAudienceQa] = useState(false);
   const [pending, startTransition] = useTransition();
 
   qaBeatRef.current = qaBeat;
+
+  useEffect(() => {
+    const link = startFreewiliLink(setFreewiliConnected);
+    freewiliRef.current = link;
+    return () => {
+      freewiliRef.current = null;
+      link.close();
+    };
+  }, []);
 
   const hasDeck = Boolean(slideshowName);
   const recording = phase === "recording";
@@ -273,12 +285,23 @@ export function Studio({
         setHandScore((current) => (current === score ? current : score));
       });
     }
+    try {
+      freewiliRef.current?.begin();
+    } catch {
+      // Recording continues when the bridge is missing.
+    }
     setPhase("recording");
   }
 
   async function endRecording() {
     if (endingRef.current) return;
     endingRef.current = true;
+    let movement: FreewiliReport | null = null;
+    try {
+      movement = freewiliRef.current?.end() ?? null;
+    } catch {
+      movement = null;
+    }
     const stopPresage = presageStopRef.current;
     presageStopRef.current = null;
     const stopHands = handsStopRef.current;
@@ -287,6 +310,13 @@ export function Studio({
     if (stopPresage) await stopPresage(false);
     const hands = await handSamples;
     if (hands.length) await putAsset(handMotionKey(sessionId), JSON.stringify(hands));
+    if (movement) {
+      try {
+        await putAsset(freewiliMotionKey(sessionId), JSON.stringify(movement));
+      } catch {
+        // A missing movement summary does not block the recording.
+      }
+    }
     advanceRef.current?.();
     advanceRef.current = null;
     stopQuestionAudio();
@@ -487,6 +517,7 @@ export function Studio({
       deleteAsset(audienceQaKey(sessionId)),
       deleteAsset(audienceQaKey("pending")),
       deleteAsset(handMotionKey(sessionId)),
+      deleteAsset(freewiliMotionKey(sessionId)),
     ]);
     router.push("/dashboard");
   }
@@ -541,6 +572,7 @@ export function Studio({
               {handScore != null ? (
                 <span className="text-xs text-white/70 tabular-nums">Hands {handScore}</span>
               ) : null}
+              <FreewiliStatus connected={freewiliConnected} />
               {presageHint ? <span className="max-w-sm truncate text-xs text-rose-200">{presageHint}</span> : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -594,6 +626,7 @@ export function Studio({
               </button>
               <span className="hidden h-4 w-px bg-white/15 sm:block" />
               <p className="truncate text-sm font-medium">Preview · {title}</p>
+              <FreewiliStatus connected={freewiliConnected} />
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {hasDeck && slides.length ? (
@@ -812,6 +845,15 @@ function recordingFile(blob: Blob) {
   const type = blob.type || "video/webm";
   const ext = type.includes("mp4") ? "mp4" : type.includes("ogg") ? "ogg" : "webm";
   return new File([blob], `recording.${ext}`, { type });
+}
+
+function FreewiliStatus({ connected }: { connected: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-white/55">
+      <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-white/30"}`} />
+      {connected ? "FreeWili connected" : "FreeWili not connected"}
+    </span>
+  );
 }
 
 function formatClock(total: number) {

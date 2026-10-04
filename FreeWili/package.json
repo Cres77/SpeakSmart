@@ -1,5 +1,5 @@
 {
-  "name": "speaksmart-coach",
+  "name": "freewili-bridge",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,12 +9,9 @@
   "scripts": {
     "start": "node server/index.mjs",
     "diagnose": "node bridge/diagnose.mjs",
-    "standin": "node server/dev-stand-in.mjs",
-    "test": "node --test && make -C firmware test",
-    "firmware:test": "make -C firmware test"
+    "test": "node --test"
   },
   "dependencies": {
-    "chart.js": "4.4.6",
     "ws": "^8.18.3"
   }
 }
