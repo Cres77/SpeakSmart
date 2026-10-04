@@ -24,6 +24,8 @@ and the docs it publishes:
   USB_PID_FW_DISPLAY_CDC_PID = 0x2055
   find_all() returns one FreeWili per board. open() opens main_serial and
   display_serial (the CDC ports). This file does not scan serial-port names.
+  Espressif USB JTAG/serial debug unit VID 0x303a PID 0x1001 is not in that
+  list. find_all() matching ignores it. It is not a FreeWili.
 - FreeWili.open(block=True, timeout_sec=6.0) -> Ok[None] | Err[str]
   FreeWili.close(restore_menu=True) -> None
   FreeWili.main_serial / FreeWili.display_serial -> None | FreeWiliSerial
@@ -58,7 +60,8 @@ NAMED_USB_IDS = (
     (0x093C, 0x2054),  # USB_VID_FW_ICS, USB_PID_FW_MAIN_CDC_PID
     (0x093C, 0x2055),  # USB_VID_FW_ICS, USB_PID_FW_DISPLAY_CDC_PID
 )
-DEFAULT_SERIAL = "FW4923"
+# Espressif USB JTAG/serial debug unit. Not a FreeWili accelerometer port.
+ESPRESSIF_DEBUG_ID = (0x303A, 0x1001)
 TONE_FAILURE_NOTE = "v54 firmware: Response frame always returns failure"
 INSTALL_COMMAND = "python3 -m pip install -r bridge/requirements.txt"
 
@@ -88,30 +91,98 @@ def device_serials(device):
     return found
 
 
+def usb_id(usb):
+    return (getattr(usb, "vid", None), getattr(usb, "pid", None))
+
+
 def has_named_usb(device):
-    """True when one interface is FTDI 0x0403:0x6014 or Intrepid CDC 0x093C:0x2054 or 0x093C:0x2055."""
+    """True when one interface is FTDI 0x0403:0x6014 or Intrepid CDC 0x093C:0x2054 or 0x093C:0x2055.
+
+    VID 0x303a PID 0x1001 is ignored. That Espressif debug port is not a FreeWili.
+    """
     for usb in getattr(device, "usb_devices", None) or []:
-        pair = (getattr(usb, "vid", None), getattr(usb, "pid", None))
+        pair = usb_id(usb)
+        if pair == ESPRESSIF_DEBUG_ID:
+            continue
         if pair in NAMED_USB_IDS:
             return True
     return False
 
 
-def select_device(devices, serial):
-    """Pick the board whose serial matches and that has a named USB interface.
+def espressif_debug_only(devices):
+    """True when every returned device is only the Espressif debug port."""
+    if not devices:
+        return False
+    saw_debug = False
+    for device in devices:
+        interfaces = list(getattr(device, "usb_devices", None) or [])
+        if not interfaces:
+            return False
+        for usb in interfaces:
+            if usb_id(usb) != ESPRESSIF_DEBUG_ID:
+                return False
+            saw_debug = True
+    return saw_debug
 
-    find_all() is the discovery API. More than one matching board requires exactly
-    one serial match. A single board still has to carry the requested serial.
-    The FTDI interface and the CDC serial ports can belong to that same board.
+
+def requested_serial(serial):
+    """Empty means the only plugged-in board. A value is a filter."""
+    if not isinstance(serial, str):
+        return ""
+    return serial.strip()
+
+
+def board_identity(device):
+    """Serial the library reports for the board. Used as deviceId after open()."""
+    inner = getattr(device, "device", None)
+    for obj in (inner, device):
+        if obj is None:
+            continue
+        serial = getattr(obj, "serial", None)
+        if isinstance(serial, str) and serial:
+            return serial
+    found = device_serials(device)
+    return found[0] if found else ""
+
+
+def select_device(devices, serial):
+    """Pick one FreeWili from find_all() that has a named USB interface.
+
+    One board is used even when its serial is not the filter. FREEWILI_SERIAL
+    filters when it is set, and it is required when more than one board is present.
+    Several boards and an empty filter select nothing. An Espressif debug port
+    does not count as a board.
     """
-    wanted = serial if isinstance(serial, str) else ""
+    wanted = requested_serial(serial)
     class_devices = [device for device in devices if has_named_usb(device)]
-    matches = [device for device in class_devices if wanted in device_serials(device)]
+    if len(class_devices) == 1:
+        only = class_devices[0]
+        if wanted and wanted not in device_serials(only):
+            return None
+        return only
     if len(class_devices) > 1:
+        if not wanted:
+            return None
+        matches = [device for device in class_devices if wanted in device_serials(device)]
         return matches[0] if len(matches) == 1 else None
-    if len(class_devices) == 1 and len(matches) == 1:
-        return matches[0]
     return None
+
+
+def describe_missing(devices, serial):
+    """Text for a failed selection. This is not a coach hello."""
+    wanted = requested_serial(serial)
+    class_devices = [device for device in devices if has_named_usb(device)]
+    if len(class_devices) > 1 and not wanted:
+        listed = ", ".join(board_identity(device) or "(no serial)" for device in class_devices)
+        return f"Several FreeWilis are plugged in: {listed}. Set FREEWILI_SERIAL to choose one."
+    if not class_devices and espressif_debug_only(devices):
+        serials = [board_identity(device) for device in devices]
+        serials = [item for item in serials if item]
+        shown = f", serial {', '.join(serials)}" if serials else ""
+        return f"USB JTAG/serial debug unit (Espressif 0x303a:0x1001{shown}) is not a FreeWili."
+    if wanted:
+        return f"FreeWili {wanted} not found"
+    return "FreeWili not found"
 
 
 def hello_message(serial, timestamp):
@@ -177,7 +248,7 @@ def ignored_host_message(host):
 
 
 def open_usb(serial):
-    """Return an opened FreeWili, or None when that serial is not on a named USB interface.
+    """Return an opened FreeWili, or None when no single board is selected.
 
     transport freewili is allowed only after this returns a device. open() uses the
     library's main and display serial ports. This function does not scan port names.
@@ -186,19 +257,42 @@ def open_usb(serial):
         from freewili import FreeWili
     except ImportError as ex:
         raise LibraryMissing() from ex
-    chosen = select_device(FreeWili.find_all(), serial)
+    devices = FreeWili.find_all()
+    chosen = select_device(devices, serial)
     if chosen is None:
+        print(describe_missing(devices, serial), flush=True)
         return None
     opened = chosen.open()
+    label = board_identity(chosen) or requested_serial(serial) or "FreeWili"
     if opened.is_err():
-        print(f"FreeWili {serial} did not open: {opened.err()}", flush=True)
+        print(f"FreeWili {label} did not open: {opened.err()}", flush=True)
         _close_quiet(chosen)
         return None
     if chosen.main_serial is None and chosen.display_serial is None:
-        print(f"FreeWili {serial} did not open a serial port.", flush=True)
+        print(f"FreeWili {label} did not open a serial port.", flush=True)
         _close_quiet(chosen)
         return None
     return chosen
+
+
+def start_accel_events(device, interval_ms, processors):
+    """Call enable_accel_events until one processor returns Ok.
+
+    processors are FreeWiliProcessorType values. Display is first, then Main.
+    The Result methods is_err() and err() are the ones fw.py uses. A timeout
+    string from err() is a failure of that processor. Samples are not invented here.
+    """
+    interval = int(interval_ms)
+    for processor in processors:
+        name = getattr(processor, "name", str(processor))
+        result = device.enable_accel_events(True, interval, processor)
+        if result.is_err():
+            print(f"enable_accel_events {name} failed: {result.err()}", flush=True)
+            continue
+        print(f"enable_accel_events Ok on {name}", flush=True)
+        return processor
+    print("enable_accel_events failed on Display and Main", flush=True)
+    return None
 
 
 def run_device(device, samples, commands, stop_event, failed, interval_ms):
@@ -212,11 +306,16 @@ def run_device(device, samples, commands, stop_event, failed, interval_ms):
         if sample is not None:
             samples.push(sample)
 
+    from freewili.types import FreeWiliProcessorType
+
+    enabled_on = None
     try:
         device.set_event_callback(callback)
-        enabled = device.enable_accel_events(True, int(interval_ms))
-        if enabled.is_err():
-            print(f"enable_accel_events failed: {enabled.err()}", flush=True)
+        enabled_on = start_accel_events(
+            device,
+            interval_ms,
+            (FreeWiliProcessorType.Display, FreeWiliProcessorType.Main),
+        )
         while not stop_event.is_set() and not failed.is_set():
             command = _next_command(commands)
             if command is not None:
@@ -228,10 +327,11 @@ def run_device(device, samples, commands, stop_event, failed, interval_ms):
         print(f"FreeWili read failed: {ex}", flush=True)
         failed.set()
     finally:
-        try:
-            device.enable_accel_events(False)
-        except Exception:
-            pass
+        if enabled_on is not None:
+            try:
+                device.enable_accel_events(False, None, enabled_on)
+            except Exception:
+                pass
         try:
             device.set_event_callback(None)
         except Exception:

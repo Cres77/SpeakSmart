@@ -16,7 +16,7 @@ npm start
 
 Open http://127.0.0.1:4173/
 
-`npm start` launches a USB bridge. It calls `FreeWili.find_all()` and `FreeWili.open()` from the `freewili` package (`bridge/requirements.txt`, freewili 0.0.51). The serial defaults to `FW4923` (`FREEWILI_SERIAL` overrides it). The page stays Disconnected until that library opens the board. The bridge then sends `transport: "freewili"` and `deviceId` set to the serial. If the board is missing, the process prints `FreeWili FW4923 not found` and does not send that transport.
+`npm start` launches a USB bridge. It calls `FreeWili.find_all()` and `FreeWili.open()` from the `freewili` package (`bridge/requirements.txt`, freewili 0.0.51). One plugged-in FreeWili is used, whatever serial the library reports. Leave `FREEWILI_SERIAL` empty for that board. Set `FREEWILI_SERIAL` when more than one board is plugged in, or to require a specific serial. The server log says it is looking for a FreeWili. It names a serial only when `FREEWILI_SERIAL` is set. The page stays Disconnected until that library opens the board. The bridge then sends `transport: "freewili"` and `deviceId` set to the serial the library reports. If several boards are present and no serial is set, the process prints those serials and does not send that transport. If none is selected, it prints that the FreeWili was not found and does not send that transport. An Espressif USB JTAG/serial debug unit (VID `0x303a`, PID `0x1001`) is not a FreeWili. If that is the only device `find_all()` returns, the process prints that and does not send `transport: "freewili"`.
 
 Python 3.10+ and the package are required:
 

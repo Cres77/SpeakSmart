@@ -18,10 +18,10 @@ import hashlib
 from pathlib import Path
 
 from freewili_usb import (
-    DEFAULT_SERIAL,
     INSTALL_COMMAND,
     LibraryMissing,
     TONE_FAILURE_NOTE,
+    board_identity,
     hello_message,
     ignored_host_message,
     open_usb,
@@ -282,8 +282,13 @@ def serve_link(host, port, serial, samples, commands, stop_event, failed, config
             break
 
 
-def run_coach(*, host, port, serial, open_device, stop_event, attempts=None, socket_factory=CoachSocket, config=None):
-    """Try USB. A missing board prints the not-found line and does not send transport freewili."""
+def run_coach(*, host, port, serial, open_device, stop_event, attempts=None, socket_factory=CoachSocket, config=None, announce_missing=True):
+    """Try USB. A missing board does not send transport freewili.
+
+    deviceId is the serial the opened board reports. An empty filter still
+    uses that board. announce_missing prints the not-found line when the
+    opener itself stayed quiet. open_usb already prints, so main passes False.
+    """
     config = config or load_config()
     interval_ms = max(1, round(1000 / config["sampleRateHz"]))
     tried = 0
@@ -296,13 +301,20 @@ def run_coach(*, host, port, serial, open_device, stop_event, attempts=None, soc
         except LibraryMissing as ex:
             print(ex, flush=True)
             raise SystemExit(2) from ex
-        if device is None or hello_message(serial, 0) is None:
-            print(f"FreeWili {serial} not found", flush=True)
+        identity = board_identity(device) if device is not None else ""
+        if device is None or hello_message(identity, 0) is None:
             if device is not None:
+                print("FreeWili opened without a serial", flush=True)
                 try:
                     device.close()
                 except Exception:
                     pass
+            elif announce_missing:
+                shown = serial.strip() if isinstance(serial, str) else ""
+                if shown:
+                    print(f"FreeWili {shown} not found", flush=True)
+                else:
+                    print("FreeWili not found", flush=True)
             if attempts is not None:
                 continue
             stop_event.wait(2)
@@ -317,7 +329,7 @@ def run_coach(*, host, port, serial, open_device, stop_event, attempts=None, soc
         )
         reader.start()
         try:
-            serve_link(host, port, serial, samples, commands, stop_event, failed, config, socket_factory)
+            serve_link(host, port, identity, samples, commands, stop_event, failed, config, socket_factory)
         finally:
             failed.set()
             reader.join(timeout=2)
@@ -345,7 +357,7 @@ def main():
     host_note = ignored_host_message(os.environ.get("FREEWILI_HOST", ""))
     if host_note:
         print(host_note, flush=True)
-    serial = os.environ.get("FREEWILI_SERIAL", "").strip() or DEFAULT_SERIAL
+    serial = os.environ.get("FREEWILI_SERIAL", "").strip()
     host = os.environ.get("SPEAKSMART_HOST", "127.0.0.1")
     config = load_config()
     port = int(os.environ.get("SPEAKSMART_PORT", config["serverPort"]))
@@ -356,7 +368,15 @@ def main():
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    run_coach(host=host, port=port, serial=serial, open_device=open_usb, stop_event=stop_event, config=config)
+    run_coach(
+        host=host,
+        port=port,
+        serial=serial,
+        open_device=open_usb,
+        stop_event=stop_event,
+        config=config,
+        announce_missing=False,
+    )
 
 
 if __name__ == "__main__":

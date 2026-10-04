@@ -13,11 +13,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bridge"))
 from freewili_usb import (  # noqa: E402
     TONE_FAILURE_NOTE,
     axes_from_accel_data,
+    board_identity,
+    describe_missing,
     hello_message,
     ignored_host_message,
     network_target,
     play_pulse,
     select_device,
+    start_accel_events,
 )
 from coach_bridge import SampleQueue, run_coach  # noqa: E402
 
@@ -76,6 +79,131 @@ class SelectTests(unittest.TestCase):
             board("FW4923", [(0x093C, 0x2054)]),
         ]
         self.assertIsNone(select_device(devices, "FW4923"))
+
+    def test_one_other_serial_is_selected_when_none_requested(self):
+        only = board("ABC123", [(0x093C, 0x2055), (0x0403, 0x6014), (0x093C, 0x2054)])
+        for requested in ("", None, "   "):
+            chosen = select_device([only], requested)
+            self.assertIs(chosen, only)
+            message = hello_message(board_identity(chosen), 1)
+            self.assertEqual(message["deviceId"], "ABC123")
+            self.assertEqual(message["transport"], "freewili")
+
+    def test_two_boards_and_no_serial_selects_none(self):
+        devices = [
+            board("AAA111", [(0x093C, 0x2054)]),
+            board("BBB222", [(0x093C, 0x2055), (0x0403, 0x6014)]),
+        ]
+        self.assertIsNone(select_device(devices, ""))
+        self.assertIsNone(select_device(devices, None))
+        text = describe_missing(devices, "")
+        self.assertIn("AAA111", text)
+        self.assertIn("BBB222", text)
+        self.assertNotIn('"transport": "freewili"', text)
+
+    def test_espressif_debug_port_is_not_a_freewili(self):
+        debug = board("E4:B3:23:99:F0:08", [(0x303A, 0x1001)])
+        for requested in ("", None, "E4:B3:23:99:F0:08", "FW4923"):
+            self.assertIsNone(select_device([debug], requested))
+        text = describe_missing([debug], "")
+        self.assertIn("is not a FreeWili", text)
+        self.assertIn("0x303a:0x1001", text)
+        self.assertIn("E4:B3:23:99:F0:08", text)
+        self.assertNotIn('"transport": "freewili"', text)
+        self.assertIn("is not a FreeWili", describe_missing([debug], "FW4923"))
+        mixed = Board(
+            "FW4923",
+            [Usb(0x303A, 0x1001, "E4:B3:23:99:F0:08"), Usb(0x093C, 0x2054, "FW4923")],
+        )
+        self.assertIs(select_device([mixed], ""), mixed)
+
+    def test_debug_port_does_not_count_as_a_second_board(self):
+        real = board("ABC123", [(0x093C, 0x2054), (0x093C, 0x2055), (0x0403, 0x6014)])
+        debug = board("E4:B3:23:99:F0:08", [(0x303A, 0x1001)])
+        chosen = select_device([debug, real], "")
+        self.assertEqual(board_identity(chosen), "ABC123")
+        message = hello_message(board_identity(chosen), 1)
+        self.assertEqual(message["deviceId"], "ABC123")
+        self.assertNotEqual(message["deviceId"], "E4:B3:23:99:F0:08")
+
+
+class Result:
+    def __init__(self, err=None):
+        self._err = err
+
+    def is_err(self):
+        return self._err is not None
+
+    def err(self):
+        return self._err
+
+
+class Processor:
+    def __init__(self, name):
+        self.name = name
+
+
+class AccelEnableTests(unittest.TestCase):
+    def test_display_error_then_main_ok_is_success(self):
+        calls = []
+        timeout = "Failed to read response frame in 6.0 seconds"
+
+        class Device:
+            def enable_accel_events(self, enable, interval, processor):
+                calls.append((enable, interval, processor.name))
+                if processor.name == "Display":
+                    return Result(timeout)
+                return Result(None)
+
+        display = Processor("Display")
+        main = Processor("Main")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            chosen = start_accel_events(Device(), 20, (display, main))
+        self.assertIs(chosen, main)
+        self.assertEqual(calls, [(True, 20, "Display"), (True, 20, "Main")])
+        text = buf.getvalue()
+        self.assertIn("enable_accel_events Ok on Main", text)
+        self.assertIn(timeout, text)
+        self.assertNotIn("played", text)
+
+    def test_display_ok_does_not_call_main(self):
+        calls = []
+
+        class Device:
+            def enable_accel_events(self, enable, interval, processor):
+                calls.append(processor.name)
+                return Result(None)
+
+        display = Processor("Display")
+        main = Processor("Main")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            chosen = start_accel_events(Device(), 20, (display, main))
+        self.assertIs(chosen, display)
+        self.assertEqual(calls, ["Display"])
+        self.assertIn("enable_accel_events Ok on Display", buf.getvalue())
+
+    def test_both_processor_errors_stay_a_failure(self):
+        calls = []
+
+        class Device:
+            def enable_accel_events(self, enable, interval, processor):
+                calls.append(processor.name)
+                return Result("Failed to read response frame in 6.0 seconds")
+
+        display = Processor("Display")
+        main = Processor("Main")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            chosen = start_accel_events(Device(), 20, (display, main))
+        self.assertIsNone(chosen)
+        self.assertEqual(calls, ["Display", "Main"])
+        text = buf.getvalue()
+        self.assertIn("enable_accel_events failed on Display and Main", text)
+        self.assertNotIn("Ok on", text)
+        self.assertNotIn("played", text)
+        self.assertNotIn('"x"', text)
 
 
 class MissingDeviceTests(unittest.TestCase):

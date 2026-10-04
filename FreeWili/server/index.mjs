@@ -448,14 +448,13 @@ function isMain() {
 
 if (isMain()) {
   const standIn = process.env.SPEAKSMART_STANDIN === "1";
-  const serial = process.env.FREEWILI_SERIAL || "FW4923";
+  const serial = (process.env.FREEWILI_SERIAL || "").trim();
+  const looking = serial
+    ? `USB bridge is on. Looking for FreeWili ${serial}.`
+    : "USB bridge is on. Looking for a FreeWili.";
   const app = await startCoachServer({ standIn, usbBridge: !standIn });
   console.log(`SpeakSmart coach  ${app.url}`);
-  console.log(
-    standIn
-      ? "Development stand-in is on. It is not a FreeWili."
-      : `USB bridge is on. Looking for FreeWili ${serial}.`,
-  );
+  console.log(standIn ? "Development stand-in is on. It is not a FreeWili." : looking);
   const shutdown = () => {
     app.close().then(() => process.exit(0));
   };
