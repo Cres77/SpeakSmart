@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/FreeWili/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -41,4 +42,4 @@ Thumbs.db
 .vscode
 
 # firmware host test binaries
-/firmware/build/
+/FreeWili/firmware/build/

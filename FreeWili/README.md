@@ -2,13 +2,14 @@
 
 The coach page shows Connected, Connecting, or Disconnected, the latest accelerometer X, Y, and Z, a movement intensity, and the last minute of that intensity. It also shows Still, Gesturing, or Excessive since the latest coach hello, with gesture and excessive counts and a stillness percent. Reconnect asks the coach to join again. Presentation holds slide decks in this browser.
 
-`presage/` is an existing webcam metrics proof of concept. It is separate from this coach and still runs on its own.
+`presage/` at the repository root is an existing webcam metrics proof of concept. It is separate from this coach and still runs on its own.
 
 ## Run
 
-Requires Node.js 20+.
+Requires Node.js 20+. From a fresh clone, run these in the repository root. The coach lives in `FreeWili/`.
 
 ```bash
+cd FreeWili
 npm install
 npm start
 ```
@@ -20,6 +21,7 @@ Open http://127.0.0.1:4173/
 To leave the page Disconnected until something else connects:
 
 ```bash
+cd FreeWili
 SPEAKSMART_STANDIN=0 npm start
 ```
 
@@ -28,6 +30,7 @@ The server listens on all interfaces, port 4173 (`SPEAKSMART_PORT` overrides it)
 ## Tests
 
 ```bash
+cd FreeWili
 npm test
 ```
 
