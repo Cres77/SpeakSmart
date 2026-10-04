@@ -39,3 +39,6 @@ next-env.d.ts
 Thumbs.db
 .idea
 .vscode
+
+# firmware host test binaries
+/firmware/build/

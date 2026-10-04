@@ -1,0 +1,14 @@
+{
+  "sampleRateHz": 50,
+  "movementThreshold": 0.35,
+  "gestureThreshold": 1.2,
+  "stillnessThreshold": 0.08,
+  "buzzCooldownMs": 2000,
+  "buzzFrequencyHz": 350,
+  "buzzDurationMs": 150,
+  "buzzAmplitude": 0.2,
+  "heartbeatIntervalMs": 2000,
+  "heartbeatTimeoutMs": 7000,
+  "reconnectGraceMs": 5000,
+  "serverPort": 4173
+}

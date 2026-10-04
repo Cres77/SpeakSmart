@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpeakSmart</title>
+    <meta
+      name="description"
+      content="SpeakSmart is a wrist coach for presentation practice. This page shows the coach link."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="top">
+        <div class="brand">
+          <span class="mark" aria-hidden="true">S</span>
+          <div>
+            <p class="eyebrow">Presentation practice</p>
+            <h1>SpeakSmart</h1>
+          </div>
+        </div>
+        <p class="lede">A wrist coach for the way you move while you speak.</p>
+      </header>
+
+      <div class="body">
+        <nav class="rail" aria-label="Primary">
+          <a href="/" aria-current="page">Dashboard</a>
+          <button type="button" disabled>Presentation <span class="later">Later</span></button>
+          <button type="button" disabled>Practice <span class="later">Later</span></button>
+          <button type="button" disabled>Analytics <span class="later">Later</span></button>
+          <button type="button" disabled>Settings <span class="later">Later</span></button>
+        </nav>
+
+        <main>
+          <section class="card" aria-labelledby="link-heading">
+            <div class="card-head">
+              <h2 id="link-heading">Coach link</h2>
+              <p id="page-link">Reconnecting to this page</p>
+            </div>
+            <p class="status" data-status="connecting">
+              <span class="dot" id="coach-dot" data-status="connecting" aria-hidden="true"></span>
+              <span id="coach-label">Connecting</span>
+            </p>
+            <p id="coach-detail">Looking for the coach.</p>
+            <p id="coach-signal" hidden>Last signal just now</p>
+            <button type="button" id="reconnect">Reconnect</button>
+          </section>
+
+          <section class="note">
+            <h2>What comes next</h2>
+            <p>Motion coaching and slides come in later phases. This page only shows whether the coach link is up.</p>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

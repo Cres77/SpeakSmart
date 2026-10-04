@@ -1,0 +1,21 @@
+#ifndef SPEAKSMART_COACH_CONFIG_H
+#define SPEAKSMART_COACH_CONFIG_H
+
+/* Keep these literals in sync with shared/config.json.
+ * Thresholds are stored for later phases. Phase 1 does not apply them.
+ */
+
+#define COACH_SAMPLE_RATE_HZ 50
+#define COACH_MOVEMENT_THRESHOLD 0.35
+#define COACH_GESTURE_THRESHOLD 1.2
+#define COACH_STILLNESS_THRESHOLD 0.08
+#define COACH_BUZZ_COOLDOWN_MS 2000
+#define COACH_BUZZ_FREQUENCY_HZ 350
+#define COACH_BUZZ_DURATION_MS 150
+#define COACH_BUZZ_AMPLITUDE 0.2
+#define COACH_HEARTBEAT_INTERVAL_MS 2000
+#define COACH_HEARTBEAT_TIMEOUT_MS 7000
+#define COACH_RECONNECT_GRACE_MS 5000
+#define COACH_SERVER_PORT 4173
+
+#endif
