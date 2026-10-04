@@ -16,16 +16,26 @@ npm start
 
 Open http://127.0.0.1:4173/
 
-`npm start` also launches a **development stand-in**. It is not a FreeWili. The page says so while that process is the coach. It sends `hello`, `heartbeat`, and synthetic `sensor` frames with raw X, Y, and Z only. It does not invent a movement score. The server computes intensity and the page shows it as a percent plus a Chart.js line. The axis units are unknown. They are not a hardware reading. Disconnect and a new coach hello clear the line.
+`npm start` launches a USB bridge. It calls `FreeWili.find_all()` and `FreeWili.open()` from the `freewili` package (`bridge/requirements.txt`, freewili 0.0.51). The serial defaults to `FW4923` (`FREEWILI_SERIAL` overrides it). The page stays Disconnected until that library opens the board. The bridge then sends `transport: "freewili"` and `deviceId` set to the serial. If the board is missing, the process prints `FreeWili FW4923 not found` and does not send that transport.
 
-To leave the page Disconnected until something else connects:
+Python 3.10+ and the package are required:
 
 ```bash
 cd FreeWili
-SPEAKSMART_STANDIN=0 npm start
+python3 -m pip install -r bridge/requirements.txt
+npm start
 ```
 
-The server listens on all interfaces, port 4173 (`SPEAKSMART_PORT` overrides it), so a later coach on the same network can reach it. The stand-in itself uses localhost.
+If Python or the package is missing, `npm start` prints that install command. `freewili` 0.0.51 has no IP argument, so `FREEWILI_HOST` is unused and the bridge stays on USB.
+
+The development stand-in is off unless you ask for it. It is not a FreeWili. The page says so while that process is the coach.
+
+```bash
+cd FreeWili
+SPEAKSMART_STANDIN=1 npm start
+```
+
+The server listens on all interfaces, port 4173 (`SPEAKSMART_PORT` overrides it). The bridge and the stand-in use localhost.
 
 ## Tests
 
@@ -38,7 +48,7 @@ That runs the server tests and `make -C firmware test`. The firmware test checks
 
 ## What is not live on a FreeWili
 
-`hardware_accel_poll` returns no sample. `fwwasm.h` does not define a sensor payload struct, and `enable_motion_stream` has no documented numeric frame, so neither is parsed. `hardware_wifi_join` still returns unverified and the device entry still exits 2.
+The on-device C build is unchanged. `hardware_accel_poll` returns no sample. `fwwasm.h` does not define a sensor payload struct, and `enable_motion_stream` has no documented numeric frame, so neither is parsed. `hardware_wifi_join` still returns unverified and the device entry still exits 2. The live board path is the USB host bridge in `bridge/`, which uses `freewili` on the computer the board is plugged into.
 
 A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page can send one pulse. The coach answers that no tone was played. Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`. Practice sessions are saved at `speaksmart.sessions`.
 

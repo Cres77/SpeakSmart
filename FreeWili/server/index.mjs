@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
@@ -63,7 +63,8 @@ export async function startCoachServer(options = {}) {
   const heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? fileConfig.heartbeatTimeoutMs;
   const reconnectGraceMs = options.reconnectGraceMs ?? fileConfig.reconnectGraceMs;
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? fileConfig.heartbeatIntervalMs;
-  const standIn = options.standIn ?? process.env.SPEAKSMART_STANDIN !== "0";
+  const standIn = options.standIn ?? process.env.SPEAKSMART_STANDIN === "1";
+  const usbBridge = options.usbBridge === true;
   const standInStdio = options.standInStdio ?? "inherit";
   const movementTracker = createMovementTracker(fileConfig.movementThreshold);
 
@@ -77,6 +78,7 @@ export async function startCoachServer(options = {}) {
   let graceTimer = null;
   let heartbeatTimer = null;
   let standInChild = null;
+  let usbChild = null;
   let boundPort = port;
   let session = 0;
 
@@ -168,6 +170,32 @@ export async function startCoachServer(options = {}) {
         SPEAKSMART_PORT: String(boundPort),
       },
       stdio: standInStdio,
+    });
+  }
+
+  function ensureUsbBridge() {
+    if (!usbBridge || standIn) return;
+    if (usbChild && usbChild.exitCode === null && !usbChild.killed) return;
+    const python = "python3";
+    const probe = spawnSync(python, ["-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"]);
+    if (probe.error || probe.status !== 0) {
+      console.error(
+        "Python 3.10 or newer is required to open the FreeWili over USB.\n" +
+          "Install Python, then run:\n" +
+          "  python3 -m pip install -r bridge/requirements.txt",
+      );
+      return;
+    }
+    const script = fileURLToPath(new URL("../bridge/coach_bridge.py", import.meta.url));
+    usbChild = spawn(python, [script], {
+      cwd: root,
+      env: {
+        ...process.env,
+        SPEAKSMART_HOST: "127.0.0.1",
+        SPEAKSMART_PORT: String(boundPort),
+        PYTHONDONTWRITEBYTECODE: "1",
+      },
+      stdio: "inherit",
     });
   }
 
@@ -294,14 +322,16 @@ export async function startCoachServer(options = {}) {
           sendError(socket, { code: "invalid", type: "buzz", message: "Send hello before other coach messages." });
           return;
         }
-        sendBrowsers({
+        const ack = {
           type: "buzz",
           frequency: message.frequency,
           duration: message.duration,
           amplitude: message.amplitude,
           played: false,
           timestamp: message.timestamp,
-        });
+        };
+        if (typeof message.note === "string" && message.note) ack.note = message.note;
+        sendBrowsers(ack);
         return;
       }
 
@@ -309,7 +339,10 @@ export async function startCoachServer(options = {}) {
         reconnectPending = true;
         setConnecting();
         if (device) sendJson(device, { type: "reconnect", timestamp: Date.now() });
-        else ensureStandIn();
+        else {
+          ensureStandIn();
+          ensureUsbBridge();
+        }
         armGrace();
         return;
       }
@@ -389,6 +422,7 @@ export async function startCoachServer(options = {}) {
   });
   boundPort = httpServer.address().port;
   if (standIn) ensureStandIn();
+  else ensureUsbBridge();
 
   return {
     port: boundPort,
@@ -397,6 +431,7 @@ export async function startCoachServer(options = {}) {
       clearGrace();
       clearHeartbeat();
       if (standInChild && standInChild.exitCode === null) standInChild.kill("SIGTERM");
+      if (usbChild && usbChild.exitCode === null) usbChild.kill("SIGTERM");
       for (const browser of browsers) browser.close();
       if (device) device.close();
       await new Promise((resolve) => {
@@ -412,13 +447,14 @@ function isMain() {
 }
 
 if (isMain()) {
-  const app = await startCoachServer();
-  const standIn = process.env.SPEAKSMART_STANDIN !== "0";
+  const standIn = process.env.SPEAKSMART_STANDIN === "1";
+  const serial = process.env.FREEWILI_SERIAL || "FW4923";
+  const app = await startCoachServer({ standIn, usbBridge: !standIn });
   console.log(`SpeakSmart coach  ${app.url}`);
   console.log(
     standIn
       ? "Development stand-in is on. It is not a FreeWili."
-      : "Development stand-in is off. The page stays Disconnected until a coach connects.",
+      : `USB bridge is on. Looking for FreeWili ${serial}.`,
   );
   const shutdown = () => {
     app.close().then(() => process.exit(0));

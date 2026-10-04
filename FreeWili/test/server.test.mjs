@@ -446,3 +446,61 @@ test("calibration sets the baseline and is not scored as a sample", async () => 
     await app.close();
   }
 });
+
+test("a buzz note is forwarded and played stays false", async () => {
+  const app = await startCoachServer({ port: 0, standIn: false });
+  try {
+    const page = await browser(`ws://127.0.0.1:${app.port}/ws`);
+    const coach = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    await opened(coach);
+    const up = waitFor(page.socket, (message) => message.status === "connected");
+    coach.send(JSON.stringify(deviceHello({ deviceId: "FW4923", transport: "freewili" })));
+    const link = await up;
+    assert.equal(link.transport, "freewili");
+    assert.equal(link.deviceId, "FW4923");
+    const ackWait = waitFor(page.socket, (message) => message.type === "buzz");
+    page.socket.send(JSON.stringify({
+      type: "buzz",
+      role: "browser",
+      frequency: 350,
+      duration: 150,
+      amplitude: 0.2,
+      timestamp: 1710000009000,
+    }));
+    await waitFor(coach, (message) => message.type === "buzz");
+    coach.send(JSON.stringify({
+      type: "buzz",
+      role: "device",
+      frequency: 350,
+      duration: 150,
+      amplitude: 0.2,
+      played: false,
+      note: "v54 firmware: Response frame always returns failure",
+      timestamp: 1710000009100,
+    }));
+    const ack = await ackWait;
+    assert.equal(ack.played, false);
+    assert.equal(ack.note, "v54 firmware: Response frame always returns failure");
+    page.socket.close();
+    coach.close();
+  } finally {
+    await app.close();
+  }
+});
+
+test("npm start default does not launch the development stand-in", async () => {
+  const previous = process.env.SPEAKSMART_STANDIN;
+  delete process.env.SPEAKSMART_STANDIN;
+  const app = await startCoachServer({ port: 0 });
+  try {
+    const page = await browser(`ws://127.0.0.1:${app.port}/ws`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(page.first.status, "disconnected");
+    assert.equal(page.first.transport, null);
+    page.socket.close();
+  } finally {
+    await app.close();
+    if (previous === undefined) delete process.env.SPEAKSMART_STANDIN;
+    else process.env.SPEAKSMART_STANDIN = previous;
+  }
+});

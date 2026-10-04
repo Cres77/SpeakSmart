@@ -20,7 +20,7 @@ The local server is the hub. The browser and the coach are both clients of that 
 }
 ```
 
-`transport` is optional. The development stand-in sends `development-stand-in`. This build does not send `transport: "freewili"`. A missing transport is not a physical FreeWili.
+`transport` is optional. The development stand-in sends `development-stand-in`. The USB bridge sends `freewili` only after `FreeWili.open()` has opened that board, and `deviceId` is then that board's serial. A missing transport is not a physical FreeWili. The stand-in never sends `freewili`.
 
 `heartbeat` — liveness while the socket stays open. Interval is `heartbeatIntervalMs` in `shared/config.json` (2000). The server marks the coach disconnected if none arrives within `heartbeatTimeoutMs` (7000).
 
@@ -192,7 +192,7 @@ The website role is `browser`. A second click while that pulse’s duration has 
 { "type": "buzz", "role": "device", "frequency": 350, "duration": 150, "amplitude": 0.2, "played": false, "timestamp": 1710000009100 }
 ```
 
-The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is false. The development stand-in does not set `played` to true. The server forwards `played: false`. The host firmware function `buzz` does not call a speaker and does not return success.
+The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is false. The development stand-in does not set `played` to true. The server forwards `played: false`. An optional `note` string is forwarded when the coach sends one. The USB bridge calls `FreeWili.play_audio_tone(frequency_hz, duration_sec, amplitude)` and still sends `played: false`, with `note` set to the documented line `v54 firmware: Response frame always returns failure`. The host firmware function `buzz` does not call a speaker and does not return success.
 
 Two verified tone APIs use different duration units. Do not mix them, and do not call them from the host build:
 

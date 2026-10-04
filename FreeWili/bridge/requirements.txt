@@ -1,0 +1,5 @@
+# Host library that enumerates USB FreeWilis and reads AccelData.
+# Verified from PyPI: freewili 0.0.51 (requires Python >=3.10) depends on pyfwfinder==0.5.0.
+# Docs: https://freewili.github.io/freewili-python/
+freewili==0.0.51
+pyfwfinder==0.5.0

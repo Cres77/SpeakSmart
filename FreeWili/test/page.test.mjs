@@ -46,6 +46,8 @@ test("page shows the coach link and accelerometer axes", () => {
     assert.match(script, new RegExp(status));
   }
   assert.match(script, /development-stand-in/);
+  assert.match(script, /Development stand-in\. This is not a FreeWili\./);
+  assert.match(script, /FreeWili \$\{message\.deviceId\} is connected\./);
   assert.match(script, /intensity-value/);
   assert.match(html, /id="motion-state"/);
   assert.match(html, /id="motion-gestures"/);

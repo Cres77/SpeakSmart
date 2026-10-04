@@ -160,6 +160,9 @@ function inspectBuzz(message) {
     if (message.played !== false) {
       return fail("invalid", "The coach acknowledgement must say the tone was not played.", "buzz");
     }
+    if (message.note !== undefined && typeof message.note !== "string") {
+      return fail("invalid", "buzz note must be a string.", "buzz");
+    }
     return { ok: true, type: "buzz", role: "device" };
   }
   if (message.role !== undefined && message.role !== "browser") {

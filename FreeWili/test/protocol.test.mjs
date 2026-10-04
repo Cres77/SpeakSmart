@@ -103,6 +103,17 @@ test("sensor x y z is accepted and a manual buzz has limits", () => {
     timestamp: 1,
   });
   assert.equal(played.code, "invalid");
+  const noted = inspectClientMessage({
+    type: "buzz",
+    role: "device",
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    played: false,
+    note: "v54 firmware: Response frame always returns failure",
+    timestamp: 1,
+  });
+  assert.equal(noted.ok, true);
   const built = deviceSensor({
     deviceId: "dev-stand-in",
     transport: "development-stand-in",

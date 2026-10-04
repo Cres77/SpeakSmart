@@ -326,9 +326,12 @@ function renderSample(message) {
   noteSample(message);
   sensorTime.textContent = formatSampleTime(message.timestamp);
   const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
+  const freewili = message.transport === "freewili" || latestLink?.transport === "freewili";
   sensorNote.textContent = standIn
     ? "Development stand-in. This is not a FreeWili."
-    : "Latest sample.";
+    : freewili
+      ? "FreeWili sample."
+      : "Latest sample.";
 }
 
 function applyStatus(status) {
@@ -374,6 +377,10 @@ function renderDetail(message) {
   }
   if (message.transport === "development-stand-in") {
     detail.textContent = "Development stand-in. This is not a FreeWili.";
+  } else if (message.transport === "freewili" && message.status === "connected") {
+    detail.textContent = message.deviceId
+      ? `FreeWili ${message.deviceId} is connected.`
+      : "FreeWili is connected.";
   } else if (message.status === "connected") {
     detail.textContent = "Coach link is up.";
   } else {
@@ -417,11 +424,13 @@ function connectPage() {
       return;
     }
     if (message.type === "buzz") {
-      setBuzzNote(lastBuzzReason === "excessive"
+      const base = lastBuzzReason === "excessive"
         ? "Excessive movement detected. No tone was played."
         : lastBuzzReason === "cue"
           ? "Cue sent. No tone was played."
-          : "Command sent. No tone was played.");
+          : "Command sent. No tone was played.";
+      const note = typeof message.note === "string" && message.note ? ` ${message.note}` : "";
+      setBuzzNote(`${base}${note}`);
       return;
     }
     if (message.type === "error" && message.for === "buzz") {
