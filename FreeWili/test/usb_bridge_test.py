@@ -29,7 +29,7 @@ from freewili_usb import (  # noqa: E402
     sample_window_lines,
     select_device,
 )
-from coach_bridge import SampleQueue, run_coach  # noqa: E402
+from coach_bridge import SampleQueue, run_coach, sensor_message  # noqa: E402
 
 
 class Usb:
@@ -176,10 +176,17 @@ class Frame:
 
 
 class MotionTests(unittest.TestCase):
-    def test_motion_axes_are_milli_g_and_gyro_is_ignored(self):
+    def test_motion_axes_are_g_and_gyro_is_ignored(self):
         sample = motion_axes(Frame("*motion", "12 -34 1002 1 2 3"))
-        self.assertEqual(sample, {"x": 12, "y": -34, "z": 1002})
+        self.assertEqual(sample, {"x": 0.012, "y": -0.034, "z": 1.002})
         self.assertNotIn("g", sample)
+
+    def test_350_mg_motion_line_is_0_35_in_the_sensor_frame(self):
+        sample = motion_axes(Frame("*motion", "350 0 1000 4 5 6"))
+        message = sensor_message("FW4923", sample, 1710000000100)
+        self.assertEqual(message["type"], "sensor")
+        self.assertEqual(message["accel"], {"x": 0.35, "y": 0.0, "z": 1.0})
+        self.assertNotIn("g", message["accel"])
 
     def test_other_events_are_not_samples(self):
         self.assertIsNone(motion_axes(Frame("*button", "1")))
@@ -282,8 +289,8 @@ class DiagnoseTests(unittest.TestCase):
         self.assertIn("set_zone(1, 1) Sensors: Ok:", text)
         self.assertIn("enable_motion_stream(20): Ok:", text)
         self.assertIn("motion samples in 5s: 2", text)
-        self.assertIn("milli-g x=12 y=-34 z=1002", text)
-        self.assertIn("milli-g x=13 y=-35 z=1001", text)
+        self.assertIn("g x=0.012 y=-0.034 z=1.002", text)
+        self.assertIn("g x=0.013 y=-0.035 z=1.001", text)
         self.assertNotIn("x=9", text)
         self.assertIn("enable_motion_stream(0): Ok:", text)
         self.assertIn("set_zone(3, 1) Audio: Ok:", text)

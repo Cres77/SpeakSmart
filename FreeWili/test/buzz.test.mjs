@@ -16,7 +16,7 @@ const buzzDefaults = {
 
 function excessiveDetector() {
   return createMotionDetector({
-    gestureThreshold: 1.2,
+    gestureThreshold: config.gestureThreshold,
     gestureMinDurationMs: 200,
     gestureCooldownMs: 400,
     stillnessThreshold: 0.08,

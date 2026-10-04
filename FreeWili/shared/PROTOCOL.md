@@ -62,7 +62,7 @@ The local server is the hub. The browser and the coach are both clients of that 
 
 `transport` on this message is optional. The server forwards the transport captured at `hello`, not a later claim that the coach is a FreeWili.
 
-On the USB bridge, `x`, `y`, and `z` are milli-g from OneWili `*motion` fields `ax_mg`, `ay_mg`, and `az_mg`. They are passed through and are not converted to g or m/s². Gyro fields are not sent. The server still applies `movementThreshold` to those milli-g numbers; that threshold was not recalibrated for milli-g. The stand-in's numbers are synthetic and are not milli-g.
+On the USB bridge, `x`, `y`, and `z` are g. OneWili `*motion` fields `ax_mg`, `ay_mg`, and `az_mg` are milli-g, and the bridge divides each by 1000 before the sensor frame. A 350 mg axis is `0.35`. Gyro fields are not sent. The stand-in's `x`, `y`, and `z` stay unitless, and the page labels those samples as the development stand-in.
 
 A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. That number is not forwarded and is not used as the score.
 
@@ -100,7 +100,7 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
 
 `session` starts at 0 and increases by one on each coach `hello`. Heartbeats keep the same number. The page uses it to tell a new hello from a heartbeat.
 
-`sensor` — the coach sample, plus the server's intensity and smoothed magnitude. `movement` is a number from 0 to 1. 1 means 100%. `magnitude` is the smoothed baseline-removed length in the sample's units, before dividing by `movementThreshold`. For the USB bridge those units are milli-g. `scored` is false on the sample that only sets the baseline; that sample is not a stillness, gesture, or excessive-movement sample. The browser does not calculate intensity or magnitude.
+`sensor` — the coach sample, plus the server's intensity and smoothed magnitude. `movement` is a number from 0 to 1. 1 means 100%. `magnitude` is the smoothed baseline-removed length in the sample's units, before dividing by `movementThreshold`. For the USB bridge those units are g. The stand-in's magnitude stays in the stand-in's unitless numbers. `scored` is false on the sample that only sets the baseline; that sample is not a stillness, gesture, or excessive-movement sample. The browser does not calculate intensity or magnitude.
 
 ```json
 {
@@ -121,7 +121,7 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
 Intensity is one formula, in `shared/movement.mjs`, applied by the server:
 
 1. Keep a slow baseline, an exponential moving average of the `x`, `y`, `z` vector. The first sample sets the baseline and scores 0, so a constant offset such as gravity is not movement. Each later sample is compared with the baseline, and the baseline then moves 2% of the way toward that sample.
-2. Take the straight-line length of the sample minus the baseline. That length stays in the sample's units. For the USB bridge those units are milli-g.
+2. Take the straight-line length of the sample minus the baseline. That length stays in the sample's units. For the USB bridge those units are g. For the stand-in they stay unitless.
 3. Smooth that length with a short moving average of the last 5 samples.
 4. Divide by `movementThreshold` from `shared/config.json` (0.35). At the threshold the score is 1, which the page shows as 100%. Above the threshold the score stays at 1. Below it the score is the fraction of the threshold. Negative results are clamped to 0.
 
@@ -133,7 +133,7 @@ A new coach `hello` starts a new baseline. Disconnecting clears it. The website 
 
 The page plots `movement` as 0–100% against the sample timestamp. It does not plot X, Y, or Z. Chart.js draws the line. The trace is not a server message.
 
-Gesture, stillness, and excessive movement use the same forwarded sample. They read `shared/config.json`. A gesture candidate begins when `magnitude` reaches `gestureThreshold` (1.2) and counts once if it stays there for `gestureMinDurationMs` (200). After that gesture ends, new candidates wait `gestureCooldownMs` (400). A sample is still when `magnitude` is below `stillnessThreshold` (0.08). Excessive movement begins when `movement` stays at or above `excessiveLevel` (0.75) for `excessiveHoldMs` (1000), then waits `excessiveCooldownMs` (3000) before another episode can count. The page can send one manual buzz. It does not play a tone or write a coaching sentence.
+Gesture, stillness, and excessive movement use the same forwarded sample. They read `shared/config.json`. In g, the kept defaults are plausible starting points: `movementThreshold` is 0.35 g and `stillnessThreshold` is 0.08 g. `gestureThreshold` is 0.5 g, since a deliberate hand gesture rarely exceeds 1.2 g of dynamic acceleration. These are defaults to tune with calibration. A gesture candidate begins when `magnitude` reaches `gestureThreshold` (0.5) and counts once if it stays there for `gestureMinDurationMs` (200). After that gesture ends, new candidates wait `gestureCooldownMs` (400). A sample is still when `magnitude` is below `stillnessThreshold` (0.08). Excessive movement begins when `movement` stays at or above `excessiveLevel` (0.75) for `excessiveHoldMs` (1000), then waits `excessiveCooldownMs` (3000) before another episode can count. The page can send one manual buzz. It does not play a tone or write a coaching sentence.
 
 Downsample and window, in `shared/intensity-series.mjs`:
 

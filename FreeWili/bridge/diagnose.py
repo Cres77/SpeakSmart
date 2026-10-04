@@ -99,9 +99,9 @@ def diagnose_device(device, seconds=LISTEN_SECONDS, sleep=time.sleep, clock=time
     samples = collect_motion(device, seconds, sleep, clock)
     emit(f"motion samples in {seconds:g}s: {len(samples)}")
     for sample in samples[:3]:
-        emit(f"milli-g x={sample['x']} y={sample['y']} z={sample['z']}")
+        emit(f"g x={sample['x']} y={sample['y']} z={sample['z']}")
     if not samples:
-        emit("No *motion samples arrived. x, y, and z are milli-g when they do.")
+        emit("No *motion samples arrived. x, y, and z are g when they do.")
     try:
         stopped = dev.io.sensors.enable_motion_stream(0)
     except Exception as ex:

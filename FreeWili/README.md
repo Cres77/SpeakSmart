@@ -16,7 +16,7 @@ npm start
 
 Open http://127.0.0.1:4173/
 
-`npm start` launches a USB bridge. It uses OneWili from git, pinned in `bridge/requirements.txt`, not freewili-python. One plugged-in FreeWili is used. Leave `FREEWILI_SERIAL` empty for that board. Set `FREEWILI_SERIAL` when more than one board is plugged in. The bridge opens only the Main CDC port `0x093C:0x2054` with `OneWili(port).open()`. It does not open the Display port and it does not open the Espressif debug port `0x303a:0x1001`. Accelerometer samples are milli-g from `*motion`. A buzz while that stream is running can drop a few queued samples. The page stays Disconnected until that port opens. The bridge then sends `transport: "freewili"` and `deviceId` set to the serial. If several boards are present and no serial is set, the process prints those serials and does not send that transport.
+`npm start` launches a USB bridge. It uses OneWili from git, pinned in `bridge/requirements.txt`, not freewili-python. One plugged-in FreeWili is used. Leave `FREEWILI_SERIAL` empty for that board. Set `FREEWILI_SERIAL` when more than one board is plugged in. The bridge opens only the Main CDC port `0x093C:0x2054` with `OneWili(port).open()`. It does not open the Display port and it does not open the Espressif debug port `0x303a:0x1001`. Accelerometer samples are g. The bridge divides OneWili `*motion` milli-g by 1000 before the sensor frame. Stand-in samples stay unitless, and the page labels them as the stand-in. A buzz while that stream is running can drop a few queued samples. The page stays Disconnected until that port opens. The bridge then sends `transport: "freewili"` and `deviceId` set to the serial. If several boards are present and no serial is set, the process prints those serials and does not send that transport.
 
 Python 3.10+ and the package are required:
 
@@ -28,7 +28,7 @@ npm start
 
 If Python or OneWili is missing, `npm start` prints that install command. OneWili takes no IP address, so `FREEWILI_HOST` is unused and the bridge stays on USB.
 
-`npm run diagnose` opens that same Main port. OneWili at the pinned commit does not expose a firmware version, so the script says so and prints the USB product name when the finder has one. It turns on the sensor zone, streams motion for 5 seconds, prints the sample count and a few milli-g values, then plays a 350 Hz, 150 ms tone and asks you to listen. It does not report that a tone was heard.
+`npm run diagnose` opens that same Main port. OneWili at the pinned commit does not expose a firmware version, so the script says so and prints the USB product name when the finder has one. It turns on the sensor zone, streams motion for 5 seconds, prints the sample count and a few g values, then plays a 350 Hz, 150 ms tone and asks you to listen. It does not report that a tone was heard.
 
 ```bash
 cd FreeWili
@@ -57,7 +57,7 @@ That runs the server tests and `make -C firmware test`. The firmware test checks
 
 The on-device C build is unchanged and is not the live path. `hardware_accel_poll` returns no sample. `hardware_wifi_join` still returns unverified and the device entry still exits 2. The live board path is the USB host bridge in `bridge/`, which uses OneWili on the computer the board is plugged into.
 
-A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page can send one pulse. `played` is true only when OneWili's tone command returns OK. The page asks you to listen. Intensity still uses `movementThreshold` on the raw numbers. For a FreeWili those numbers are milli-g, and that threshold was not recalibrated for milli-g. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`. Practice sessions are saved at `speaksmart.sessions`.
+A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page can send one pulse. `played` is true only when OneWili's tone command returns OK. The page asks you to listen. Intensity uses `movementThreshold` on those numbers. For a FreeWili they are g. The kept defaults are starting points to tune with calibration: movement 0.35 g, stillness 0.08 g, and gesture 0.5 g. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`. Practice sessions are saved at `speaksmart.sessions`.
 
 ## Later phases
 

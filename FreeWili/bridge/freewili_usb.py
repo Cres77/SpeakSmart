@@ -20,6 +20,7 @@ Line numbers below are that commit's python/onewili tree.
 - dev.io.sensors.enable_motion_stream(stream_rate_ms) (sensors.py:23-38).
   0 stops the stream. The motion event payload is ax_mg, ay_mg, az_mg,
   gx_ddps, gy_ddps, gz_ddps (sensors.py:16-17). ax/ay/az are milli-g.
+  motion_axes divides those three by 1000 so the sensor frame is in g.
   Gyro fields are ignored. Frames are ResponseFrame (framing.py:41-62);
   path '*motion' and response is the space-separated payload.
 - Events arrive on dev._transport.events (transport.py:116). OneWili has no
@@ -285,10 +286,12 @@ def hello_message(serial, timestamp):
 
 
 def motion_axes(frame):
-    """x, y, z in milli-g from a *motion frame. Gyro fields are dropped.
+    """x, y, z in g from a *motion frame. Gyro fields are dropped.
 
     ResponseFrame.response is the payload after the sequence (framing.py:56-60).
-    sensors.py lists ax_mg, ay_mg, az_mg first. Values are not scaled.
+    sensors.py lists ax_mg, ay_mg, az_mg first. Those integers are milli-g.
+    Divide by 1000 before the sample is queued. sensor_message sends that
+    value, so a 350 mg axis is 0.35 in the sensor frame.
     """
     if getattr(frame, "path", None) != "*motion":
         return None
@@ -299,9 +302,9 @@ def motion_axes(frame):
     if len(parts) < 3:
         return None
     try:
-        x = int(parts[0])
-        y = int(parts[1])
-        z = int(parts[2])
+        x = int(parts[0]) / 1000
+        y = int(parts[1]) / 1000
+        z = int(parts[2]) / 1000
     except ValueError:
         return None
     return {"x": x, "y": y, "z": z}

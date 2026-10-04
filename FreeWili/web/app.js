@@ -328,9 +328,9 @@ function renderSample(message) {
   const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
   const freewili = message.transport === "freewili" || latestLink?.transport === "freewili";
   sensorNote.textContent = standIn
-    ? "Development stand-in. This is not a FreeWili."
+    ? "Development stand-in. These numbers are unitless. This is not a FreeWili."
     : freewili
-      ? "FreeWili sample, milli-g."
+      ? "FreeWili sample, g."
       : "Latest sample.";
 }
 

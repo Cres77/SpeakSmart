@@ -1,8 +1,8 @@
 /* One movement score for the server. The page displays it and does not recompute it.
  * Firmware does not implement this.
  *
- * Units of x, y, and z are unknown. The score stays in those units.
- * Nothing here converts a sample to g or m/s².
+ * FreeWili samples arrive in g. Stand-in samples stay unitless.
+ * The score stays in the sample's units. This file does not convert them.
  *
  * Baseline: exponential moving average of the x, y, z vector.
  * The first sample sets the baseline and scores 0, so a steady offset is not movement.
@@ -12,7 +12,7 @@
  * Intensity: length of that gap, averaged over the last 5 samples, divided by
  * movementThreshold. 1 means the smoothed gap is at the threshold. Larger gaps stay at 1.
  * sample() still returns only that 0–1 score. smoothedMagnitude is the average
- * length before the division, in the sample's unknown units. scored is false
+ * length before the division, in the sample's units (g on a FreeWili). scored is false
  * on the sample that only sets the baseline.
  */
 

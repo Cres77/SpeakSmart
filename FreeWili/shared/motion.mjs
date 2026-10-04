@@ -1,5 +1,5 @@
 /* Gesture, stillness, and excessive movement from samples the movement tracker already scored.
- * Pass the tracker's smoothed magnitude (unknown units, before movementThreshold)
+ * Pass the tracker's smoothed magnitude (g on a FreeWili, before movementThreshold)
  * and its 0–1 movement score. Do not pass the sample that only set the baseline.
  * This does not buzz, play a tone, or write a coaching sentence.
  */

@@ -36,7 +36,8 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /id="calibrate"/);
   assert.match(html, /Hold still/);
   assert.match(script, /CALIBRATION_STORAGE_KEY/);
-  assert.match(html, /milli-g/);
+  assert.match(html, /FreeWili x, y, and z are g/);
+  assert.match(html, /Stand-in numbers are unitless/);
   assert.match(html, /Dashboard/);
   for (const label of ["Presentation", "Practice", "Analytics", "Settings"]) {
     assert.match(html, new RegExp(label));
@@ -46,7 +47,7 @@ test("page shows the coach link and accelerometer axes", () => {
     assert.match(script, new RegExp(status));
   }
   assert.match(script, /development-stand-in/);
-  assert.match(script, /Development stand-in\. This is not a FreeWili\./);
+  assert.match(script, /Development stand-in\. These numbers are unitless\. This is not a FreeWili\./);
   assert.match(script, /FreeWili \$\{message\.deviceId\} is connected\./);
   assert.match(script, /intensity-value/);
   assert.match(html, /id="motion-state"/);
@@ -74,6 +75,6 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(script, /Command returned OK\./);
   assert.match(script, /Command did not return OK\./);
   assert.match(script, /Listen for the tone\./);
-  assert.match(script, /FreeWili sample, milli-g\./);
+  assert.match(script, /FreeWili sample, g\./);
   assert.doesNotMatch(script, /No tone was played/);
 });
