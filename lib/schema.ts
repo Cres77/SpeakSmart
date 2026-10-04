@@ -7,6 +7,11 @@ export type Suggestion = {
   severity: "info" | "watch" | "strong";
 };
 
+export type AudienceQuestion = {
+  text: string;
+  voice: string;
+};
+
 export const practiceSessions = pgTable(
   "practice_sessions",
   {
@@ -19,6 +24,8 @@ export const practiceSessions = pgTable(
     notes: text("notes"),
     durationSeconds: integer("duration_seconds").notNull().default(0),
     transcript: text("transcript"),
+    qaStartedMs: integer("qa_started_ms"),
+    audienceQuestions: jsonb("audience_questions").$type<AudienceQuestion[]>(),
     suggestions: jsonb("suggestions").$type<Suggestion[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -43,6 +50,7 @@ export const sessionFrames = pgTable(
     gazeScore: real("gaze_score"),
     postureScore: real("posture_score"),
     expression: text("expression"),
+    segment: text("segment").notNull().default("presentation"),
   },
   (table) => [index("session_frames_session_id_idx").on(table.sessionId, table.timestampMs)],
 );

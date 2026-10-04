@@ -1,7 +1,7 @@
 "use client";
 
 import { createSessionAction } from "@/app/actions";
-import { putAsset, slideshowKey } from "@/lib/idb";
+import { audienceQaKey, putAsset, slideshowKey } from "@/lib/idb";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 
 export function NewSessionForm({ onCancel }: { onCancel?: () => void }) {
@@ -10,6 +10,7 @@ export function NewSessionForm({ onCancel }: { onCancel?: () => void }) {
   const fileRef = useRef<File | null>(null);
 
   async function onSubmit(formData: FormData) {
+    await putAsset(audienceQaKey("pending"), formData.get("audienceQa") === "on" ? "1" : "0");
     if (fileRef.current) {
       await putAsset(slideshowKey("pending"), fileRef.current);
       formData.set("slideshowName", fileRef.current.name);
@@ -49,6 +50,15 @@ export function NewSessionForm({ onCancel }: { onCancel?: () => void }) {
         <input type="checkbox" name="showCamera" defaultChecked className="accent-[#635bff]" />
         Show camera
       </label>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="audienceQa" className="mt-0.5 accent-[#635bff]" />
+        <span>
+          Audience Q&A
+          <span className="mt-0.5 block text-xs font-normal text-[var(--muted)]">
+            After you stop, three questions are asked out loud and stay on the recording.
+          </span>
+        </span>
+      </label>
       {state?.error ? <p className="text-sm text-rose-500">{state.error}</p> : null}
       <div className="flex justify-end gap-2 pt-1">
         {onCancel ? (
@@ -87,7 +97,7 @@ export function NewSessionModal({
       <button type="button" className="absolute inset-0 bg-[#0a2540]/40" aria-label="Close" onClick={onClose} />
       <div className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[var(--shadow)]">
         <h2 className="text-xl font-semibold tracking-tight">New session</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">Optional slides. More options later.</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">Optional slides, camera, and audience Q&A.</p>
         <div className="mt-5">
           <NewSessionForm onCancel={onClose} />
         </div>

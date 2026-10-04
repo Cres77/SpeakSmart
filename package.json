@@ -8,9 +8,13 @@
     "start": "next start"
   },
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.70.0",
     "@neondatabase/auth": "0.5.0-beta",
     "@neondatabase/serverless": "^1.2.0",
+    "@smartspectra/node-sdk": "^3.4.0",
+    "@techstark/opencv-js": "^5.0.0-release.1",
     "drizzle-orm": "^0.45.3",
+    "jpeg-js": "^0.4.4",
     "next": "16.3.8",
     "pdfjs-dist": "^6.4.299",
     "react": "19.2.8",

@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, lt, ne } from "drizzle-orm";
 import { db } from "./db";
 import { generatePresageFrames, suggestionsFromFrames } from "./presage";
-import { practiceSessions, sessionFrames, type PracticeSession } from "./schema";
+import type { PresageMeasureResult } from "./presage-measure";
+import { practiceSessions, sessionFrames, type AudienceQuestion, type PracticeSession } from "./schema";
 
 export async function listSessions(userId: string): Promise<PracticeSession[]> {
   // Previews that were abandoned (tab closed, back button) never become sessions.
@@ -60,7 +61,7 @@ export async function createSession(
 export async function updateSessionForUser(
   id: string,
   userId: string,
-  patch: Partial<Pick<PracticeSession, "showCamera" | "status" | "title" | "notes" | "transcript">>,
+  patch: Partial<Pick<PracticeSession, "showCamera" | "status" | "title" | "notes" | "transcript" | "suggestions">>,
 ) {
   const existing = await getSessionForUser(id, userId);
   if (!existing) return null;
@@ -94,13 +95,19 @@ export async function completeRecording(
   userId: string,
   durationSeconds: number,
   transcript?: string | null,
+  qa?: { startedMs: number; questions: AudienceQuestion[] } | null,
+  presage?: PresageMeasureResult | null,
 ) {
   const existing = await getSessionForUser(id, userId);
   if (!existing) return null;
 
-  const duration = Math.max(8, Math.round(durationSeconds));
-  const frames = generatePresageFrames(id, duration);
-  const suggestions = suggestionsFromFrames(frames);
+  const duration = Math.max(1, Math.round(durationSeconds));
+  const frames = presage ? presage.frames : generatePresageFrames(id, Math.max(8, duration), qa?.startedMs);
+  const suggestions = suggestionsFromFrames(frames, presage?.note, {
+    transcript: transcript ?? existing.transcript,
+    durationSeconds: duration,
+    qaStartedMs: qa?.startedMs ?? null,
+  });
 
   await db.delete(sessionFrames).where(eq(sessionFrames.sessionId, id));
   if (frames.length) {
@@ -119,6 +126,8 @@ export async function completeRecording(
       durationSeconds: duration,
       suggestions,
       transcript: transcript ?? existing.transcript ?? null,
+      qaStartedMs: qa?.startedMs ?? null,
+      audienceQuestions: qa?.questions ?? null,
       updatedAt: new Date(),
     })
     .where(eq(practiceSessions.id, id))

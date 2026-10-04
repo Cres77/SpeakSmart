@@ -1,12 +1,19 @@
 "use client";
 
-import { cancelSessionAction, finishRecordingAction, setShowCameraAction } from "@/app/actions";
-import { deleteAsset, getAsset, putAsset, recordingKey, slideshowKey } from "@/lib/idb";
-import { loadSlides, releaseSlides, type Slide } from "@/lib/slides";
+import { cancelSessionAction, finishRecordingAction, prepareAudienceQuestionsAction, setShowCameraAction } from "@/app/actions";
+import { startHandCapture } from "@/lib/hand-capture";
+import type { HandSample } from "@/lib/hand-motion";
+import { audienceQaKey, deleteAsset, getAsset, handMotionKey, putAsset, recordingKey, slideshowKey } from "@/lib/idb";
+import { loadOpenCv } from "@/lib/opencv";
+import { startPresageCapture } from "@/lib/presage-capture";
+import { createRecordingMix, type RecordingMix } from "@/lib/recording-mix";
+import { compressSlideImages, extractDeckText, loadSlides, releaseSlides, type Slide } from "@/lib/slides";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition, type PointerEvent as ReactPointerEvent } from "react";
 
 type Phase = "preview" | "recording";
+type QaBeat = "off" | "preparing" | "asking" | "answering" | "error";
+type SpokenQuestion = { text: string; voice: string; audioBase64: string };
 
 export function Studio({
   sessionId,
@@ -26,8 +33,21 @@ export function Studio({
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const mixRef = useRef<RecordingMix | null>(null);
   const startedAt = useRef<number>(0);
   const activeThumb = useRef<HTMLButtonElement | null>(null);
+  const endingRef = useRef(false);
+  const qaRunning = useRef(false);
+  const qaArmed = useRef(false);
+  const qaStartedMs = useRef<number | null>(null);
+  const qaChunkStart = useRef<number | null>(null);
+  const presentationTranscript = useRef("");
+  const questionsRef = useRef<{ text: string; voice: string }[]>([]);
+  const advanceRef = useRef<(() => void) | null>(null);
+  const questionSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const qaBeatRef = useRef<QaBeat>("off");
+  const presageStopRef = useRef<((abort?: boolean) => Promise<unknown>) | null>(null);
+  const handsStopRef = useRef<(() => Promise<HandSample[]>) | null>(null);
 
   const [phase, setPhase] = useState<Phase>("preview");
   const [showCamera, setShowCamera] = useState(initialShowCamera);
@@ -41,10 +61,37 @@ export function Studio({
   const [streamReady, setStreamReady] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cameraWidth, setCameraWidth] = useState<number | null>(null);
+  const [qaBeat, setQaBeat] = useState<QaBeat>("off");
+  const [qaIndex, setQaIndex] = useState(0);
+  const [qaQuestions, setQaQuestions] = useState<SpokenQuestion[]>([]);
+  const [qaError, setQaError] = useState<string | null>(null);
+  const [presageHint, setPresageHint] = useState<string | null>(null);
+  const [handScore, setHandScore] = useState<number | null>(null);
+  const [audienceQa, setAudienceQa] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  qaBeatRef.current = qaBeat;
 
   const hasDeck = Boolean(slideshowName);
   const recording = phase === "recording";
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pendingChoice = await getAsset<string>(audienceQaKey("pending"));
+      if (pendingChoice === "1" || pendingChoice === "0") {
+        await putAsset(audienceQaKey(sessionId), pendingChoice);
+        await deleteAsset(audienceQaKey("pending"));
+        if (!cancelled) setAudienceQa(pendingChoice === "1");
+        return;
+      }
+      const saved = await getAsset<string>(audienceQaKey(sessionId));
+      if (!cancelled) setAudienceQa(saved === "1");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   // Load + render the deck, one image per slide.
   useEffect(() => {
@@ -86,7 +133,12 @@ export function Studio({
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+          },
           audio: true,
         });
         if (cancelled) {
@@ -102,11 +154,19 @@ export function Studio({
     })();
     return () => {
       cancelled = true;
+      void handsStopRef.current?.();
+      handsStopRef.current = null;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+      mixRef.current?.close();
+      mixRef.current = null;
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     };
+  }, []);
+
+  useEffect(() => {
+    void loadOpenCv().catch(() => {});
   }, []);
 
   // The <video> can move in the layout; make sure it keeps its stream.
@@ -137,7 +197,8 @@ export function Studio({
     if (!hasDeck) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName)) return;
+      if (qaBeatRef.current !== "off" && e.key === " ") return;
       if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) {
         e.preventDefault();
         go(1);
@@ -165,23 +226,36 @@ export function Studio({
   }
 
   async function startRecording() {
+    // Resume audio in this click, before any await, so the mixed recording is not silent.
+    const stream = streamRef.current;
+    mixRef.current?.close();
+    let mix: RecordingMix | null = null;
+    try {
+      mix = stream ? createRecordingMix(stream) : null;
+    } catch {
+      mix = null;
+    }
+    mixRef.current = mix;
+    const resume = mix?.context.resume();
+
     // Needs to run inside the click so the browser allows fullscreen.
     try {
       await rootRef.current?.requestFullscreen();
     } catch {
       // Fullscreen can be blocked; the layout still fills the window.
     }
+    await resume;
     startedAt.current = Date.now();
     setElapsed(0);
     setIndex(0);
 
-    const stream = streamRef.current;
-    if (stream && typeof MediaRecorder !== "undefined") {
+    const recordStream = mix?.recordStream ?? stream;
+    if (recordStream && typeof MediaRecorder !== "undefined") {
       try {
         const mimeType = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find(
           (type) => MediaRecorder.isTypeSupported(type),
         );
-        const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        const recorder = mimeType ? new MediaRecorder(recordStream, { mimeType }) : new MediaRecorder(recordStream);
         chunksRef.current = [];
         recorder.ondataavailable = (e) => {
           if (e.data.size) chunksRef.current.push(e.data);
@@ -192,11 +266,40 @@ export function Studio({
         recorderRef.current = null;
       }
     }
+    if (stream) {
+      presageStopRef.current = startPresageCapture(sessionId, stream, startedAt.current, setPresageHint);
+      setHandScore(null);
+      handsStopRef.current = startHandCapture(stream, startedAt.current, (score) => {
+        setHandScore((current) => (current === score ? current : score));
+      });
+    }
     setPhase("recording");
   }
 
   async function endRecording() {
+    if (endingRef.current) return;
+    endingRef.current = true;
+    const stopPresage = presageStopRef.current;
+    presageStopRef.current = null;
+    const stopHands = handsStopRef.current;
+    handsStopRef.current = null;
+    const handSamples = stopHands ? stopHands() : Promise.resolve([]);
+    if (stopPresage) await stopPresage(false);
+    const hands = await handSamples;
+    if (hands.length) await putAsset(handMotionKey(sessionId), JSON.stringify(hands));
+    advanceRef.current?.();
+    advanceRef.current = null;
+    stopQuestionAudio();
+
     const duration = Math.max(1, Math.floor((Date.now() - startedAt.current) / 1000));
+    const qa = qaArmed.current
+      ? {
+          startedMs: qaStartedMs.current ?? 0,
+          presentationTranscript: presentationTranscript.current,
+          questions: questionsRef.current,
+          qaAudio: qaAudioFile(),
+        }
+      : null;
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       await new Promise<void>((resolve) => {
@@ -208,25 +311,182 @@ export function Studio({
         await putAsset(recordingKey(sessionId), new Blob(chunksRef.current, { type: recordedType }));
       }
     }
+    mixRef.current?.close();
     if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
     const recordedType = recorder?.mimeType || "video/webm";
     const recordingBlob = chunksRef.current.length
       ? new Blob(chunksRef.current, { type: recordedType })
       : null;
     startTransition(async () => {
-      const audio = recordingBlob ? recordingFile(recordingBlob) : null;
-      await finishRecordingAction(sessionId, duration, audio);
+      const video = recordingBlob ? recordingFile(recordingBlob) : null;
+      await finishRecordingAction(sessionId, duration, video, qa);
     });
+  }
+
+  function qaAudioFile() {
+    const mix = mixRef.current;
+    const start = qaChunkStart.current;
+    if (!mix || start == null) return null;
+    const wav = mix.wavFrom(start);
+    if (wav.size <= 44) return null;
+    return new File([wav], "answers.wav", { type: "audio/wav" });
+  }
+
+  function stopQuestionAudio() {
+    const source = questionSourceRef.current;
+    questionSourceRef.current = null;
+    if (!source) return;
+    try {
+      source.stop();
+    } catch {
+      // Already finished.
+    }
+    const mix = mixRef.current;
+    if (mix) mix.micGain.gain.value = 1;
+  }
+
+  function advanceQuestion() {
+    advanceRef.current?.();
+    advanceRef.current = null;
+  }
+
+  async function startAudienceQa() {
+    if (qaRunning.current || endingRef.current || pending) return;
+    qaRunning.current = true;
+    setQaError(null);
+    setQaBeat("preparing");
+    const mix = mixRef.current;
+    void mix?.context.resume();
+    const chunkAtClick = mix ? mix.chunkCount() : 0;
+    const clockAtClick = Math.max(0, Date.now() - startedAt.current);
+
+    try {
+      const form = new FormData();
+      if (mix) {
+        const wav = mix.wavFrom(0, chunkAtClick);
+        if (wav.size > 44) form.set("audio", new File([wav], "presentation.wav", { type: "audio/wav" }));
+      }
+      let deckText = "";
+      if (slideshowName) {
+        const deck = await getAsset(slideshowKey(sessionId));
+        if (deck) deckText = await extractDeckText(deck, slideshowName);
+      }
+      form.set("deckText", deckText.slice(0, 12000));
+      if (deckText.trim().length < 80 && slides.length) {
+        const images = await compressSlideImages(slides);
+        for (const image of images) form.append("slide", image);
+      }
+      if (endingRef.current) return;
+
+      const result = await prepareAudienceQuestionsAction(sessionId, form);
+      if (endingRef.current) return;
+      if (!result.ok) {
+        setQaError(explainQuestionError(result.error));
+        setQaBeat("error");
+        return;
+      }
+
+      presentationTranscript.current = result.presentationTranscript;
+      questionsRef.current = result.questions.map((question) => ({ text: question.text, voice: question.voice }));
+      qaChunkStart.current = chunkAtClick;
+      qaStartedMs.current = clockAtClick;
+      qaArmed.current = true;
+      setQaQuestions(result.questions);
+      setQaIndex(0);
+      await playSequence(result.questions);
+    } catch (error) {
+      if (!endingRef.current) {
+        setQaError(explainQuestionError(error instanceof Error ? error.message : ""));
+        setQaBeat("error");
+      }
+    } finally {
+      qaRunning.current = false;
+    }
+  }
+
+  async function playSequence(questions: SpokenQuestion[]) {
+    for (let i = 0; i < questions.length; i += 1) {
+      if (endingRef.current) return;
+      setQaIndex(i);
+      setQaBeat("asking");
+      const mix = mixRef.current;
+      if (questions[i].audioBase64) {
+        try {
+          if (mix) await playMixedQuestion(mix, questions[i].audioBase64);
+          else await playSpeakerQuestion(questions[i].audioBase64);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      if (endingRef.current) return;
+      setQaBeat("answering");
+      if (i < questions.length - 1) {
+        await new Promise<void>((resolve) => {
+          advanceRef.current = resolve;
+        });
+      }
+    }
+  }
+
+  async function replayQuestion() {
+    const question = qaQuestions[qaIndex];
+    if (!question?.audioBase64 || endingRef.current) return;
+    setQaBeat("asking");
+    try {
+      const mix = mixRef.current;
+      if (mix) await playMixedQuestion(mix, question.audioBase64);
+      else await playSpeakerQuestion(question.audioBase64);
+    } catch (error) {
+      console.error(error);
+    }
+    if (!endingRef.current) setQaBeat("answering");
+  }
+
+  function playMixedQuestion(mix: RecordingMix, audioBase64: string) {
+    return mix.context.decodeAudioData(bytesFromBase64(audioBase64).slice(0)).then(
+      (audioBuffer) =>
+        new Promise<void>((resolve) => {
+          const source = mix.context.createBufferSource();
+          questionSourceRef.current = source;
+          source.buffer = audioBuffer;
+          source.connect(mix.destination);
+          source.connect(mix.context.destination);
+          source.onended = () => {
+            if (questionSourceRef.current === source) questionSourceRef.current = null;
+            window.setTimeout(() => {
+              const now = mix.context.currentTime;
+              mix.micGain.gain.cancelScheduledValues(now);
+              mix.micGain.gain.setValueAtTime(mix.micGain.gain.value, now);
+              mix.micGain.gain.linearRampToValueAtTime(1, now + 0.08);
+              resolve();
+            }, 140);
+          };
+          const now = mix.context.currentTime;
+          mix.micGain.gain.cancelScheduledValues(now);
+          mix.micGain.gain.setValueAtTime(mix.micGain.gain.value, now);
+          mix.micGain.gain.linearRampToValueAtTime(0, now + 0.04);
+          source.start();
+        }),
+    );
   }
 
   // Leaving the preview throws the whole session away.
   async function cancelSession() {
     setCancelling(true);
+    const stopPresage = presageStopRef.current;
+    presageStopRef.current = null;
+    const stopHands = handsStopRef.current;
+    handsStopRef.current = null;
+    if (stopPresage) await stopPresage(true).catch(() => {});
+    if (stopHands) await stopHands().catch(() => {});
     await Promise.allSettled([
       cancelSessionAction(sessionId),
       deleteAsset(slideshowKey(sessionId)),
       deleteAsset(slideshowKey("pending")),
       deleteAsset(recordingKey(sessionId)),
+      deleteAsset(audienceQaKey(sessionId)),
+      deleteAsset(audienceQaKey("pending")),
+      deleteAsset(handMotionKey(sessionId)),
     ]);
     router.push("/dashboard");
   }
@@ -278,19 +538,47 @@ export function Studio({
                   Slide {index + 1} of {slides.length}
                 </span>
               ) : null}
+              {handScore != null ? (
+                <span className="text-xs text-white/70 tabular-nums">Hands {handScore}</span>
+              ) : null}
+              {presageHint ? <span className="max-w-sm truncate text-xs text-rose-200">{presageHint}</span> : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button type="button" className="btn btn-nav" onClick={toggleCamera}>
                 {showCamera ? "Hide camera" : "Show camera"}
               </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={endRecording}
-                disabled={pending}
-              >
-                {pending ? "Saving…" : "End session"}
-              </button>
+              {qaBeat === "asking" || qaBeat === "answering" ? (
+                qaBeat === "answering" && qaIndex < qaQuestions.length - 1 ? (
+                  <button type="button" className="btn btn-nav" onClick={advanceQuestion}>
+                    Next question
+                  </button>
+                ) : (
+                  <span className="text-xs text-white/70">
+                    Question {qaIndex + 1} of {qaQuestions.length}
+                  </span>
+                )
+              ) : qaBeat === "preparing" ? (
+                <span className="text-xs text-white/70">Writing questions…</span>
+              ) : qaBeat === "error" ? (
+                <span className="text-xs font-medium text-rose-200">Questions failed</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => {
+                    if (audienceQa) void startAudienceQa();
+                    else void endRecording();
+                  }}
+                  disabled={pending}
+                >
+                  {pending ? "Saving…" : audienceQa ? "Stop presentation" : "End session"}
+                </button>
+              )}
+              {qaBeat === "preparing" || qaBeat === "asking" || qaBeat === "answering" ? (
+                <button type="button" className="btn btn-danger" onClick={endRecording} disabled={pending}>
+                  {pending ? "Saving…" : "End session"}
+                </button>
+              ) : null}
             </div>
           </>
         ) : (
@@ -316,6 +604,7 @@ export function Studio({
               <button type="button" className="btn btn-nav px-3 py-1.5 text-sm" onClick={toggleCamera}>
                 {showCamera ? "Hide camera" : "Show camera"}
               </button>
+              {audienceQa ? <span className="text-xs text-white/60">Q&A at the end</span> : null}
               <button
                 type="button"
                 className="btn btn-accent px-3 py-1.5 text-sm"
@@ -425,10 +714,98 @@ export function Studio({
               {camError}
             </p>
           ) : null}
+
+          {qaBeat !== "off" ? (
+            <div className="absolute inset-x-0 top-4 z-30 flex justify-center px-4">
+              <div className="w-full max-w-xl rounded-xl bg-[#0a2540]/95 p-4 shadow-2xl ring-1 ring-white/15">
+                {qaBeat === "preparing" ? (
+                  <>
+                    <p className="text-sm font-medium">Writing audience questions</p>
+                    <p className="mt-1 text-sm text-white/70">
+                      Recording stays on. Three questions from this talk will be asked out loud, then you answer.
+                    </p>
+                  </>
+                ) : null}
+                {qaBeat === "error" ? (
+                  <div role="alert" className="rounded-lg bg-rose-950 px-3 py-3">
+                    <p className="text-sm font-medium text-rose-100">Audience questions didn’t start</p>
+                    <p className="mt-2 text-sm leading-5 text-white">{qaError}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" className="btn btn-nav px-3 py-1.5 text-sm" onClick={() => void startAudienceQa()}>
+                        Try again
+                      </button>
+                      <button type="button" className="btn btn-danger px-3 py-1.5 text-sm" onClick={endRecording} disabled={pending}>
+                        {pending ? "Saving…" : "End session"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {qaBeat === "asking" || qaBeat === "answering" ? (
+                  <>
+                    <p className="text-xs tracking-wide text-white/50 uppercase">
+                      {qaQuestions[qaIndex]?.voice ?? "Audience"} · question {qaIndex + 1} of {qaQuestions.length}
+                    </p>
+                    <p className="mt-2 text-lg leading-snug">{qaQuestions[qaIndex]?.text}</p>
+                    <p className="mt-2 text-sm text-white/70">
+                      {qaBeat === "asking" ? "Playing the question…" : "Your answer is being recorded."}
+                    </p>
+                    {qaBeat === "answering" ? (
+                      <div className="mt-3 flex gap-2">
+                        <button type="button" className="btn btn-nav px-3 py-1.5 text-sm" onClick={() => void replayQuestion()}>
+                          Replay
+                        </button>
+                        {qaIndex < qaQuestions.length - 1 ? (
+                          <button type="button" className="btn btn-accent px-3 py-1.5 text-sm" onClick={advanceQuestion}>
+                            Next question
+                          </button>
+                        ) : (
+                          <button type="button" className="btn btn-danger px-3 py-1.5 text-sm" onClick={endRecording} disabled={pending}>
+                            {pending ? "Saving…" : "End session"}
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
+}
+
+function explainQuestionError(message: string) {
+  const text = message.trim();
+  if (/unexpected end of form/i.test(text) || /body exceeded/i.test(text)) {
+    return "The talk was too large to send, so the questions could not be written. End the session, or try again after a shorter presentation.";
+  }
+  if (!text || /server components render/i.test(text) || /failed to fetch/i.test(text)) {
+    return "Audience questions failed before they could be written. Check the Gemini and ElevenLabs keys, then try again.";
+  }
+  return text;
+}
+
+function playSpeakerQuestion(audioBase64: string) {
+  const url = URL.createObjectURL(new Blob([bytesFromBase64(audioBase64)], { type: "audio/mpeg" }));
+  const audio = new Audio(url);
+  return audio.play().then(
+    () =>
+      new Promise<void>((resolve) => {
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+      }),
+  );
+}
+
+function bytesFromBase64(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 function recordingFile(blob: Blob) {

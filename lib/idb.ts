@@ -52,3 +52,11 @@ export function slideshowKey(sessionId: string) {
 export function recordingKey(sessionId: string) {
   return `recording:${sessionId}`;
 }
+
+export function audienceQaKey(sessionId: string) {
+  return `audience-qa:${sessionId}`;
+}
+
+export function handMotionKey(sessionId: string) {
+  return `hand-motion:${sessionId}`;
+}
