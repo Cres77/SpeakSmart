@@ -511,7 +511,8 @@ button:disabled {
 }
 
 .session-list button,
-#session-back {
+#session-back,
+#analytics-back {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--line);

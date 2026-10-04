@@ -28,6 +28,10 @@ const files = {
     file: join(root, "shared/session.mjs"),
     type: "text/javascript; charset=utf-8",
   },
+  "/summary.mjs": {
+    file: join(root, "shared/summary.mjs"),
+    type: "text/javascript; charset=utf-8",
+  },
   "/motion.mjs": {
     file: join(root, "shared/motion.mjs"),
     type: "text/javascript; charset=utf-8",

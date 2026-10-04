@@ -28,7 +28,7 @@
           <button type="button" id="nav-dashboard" aria-current="page">Dashboard</button>
           <button type="button" id="nav-presentation">Presentation</button>
           <button type="button" id="nav-practice">Practice</button>
-          <button type="button" id="nav-analytics" disabled>Analytics <span class="later">Later</span></button>
+          <button type="button" id="nav-analytics">Analytics</button>
           <button type="button" id="nav-settings">Settings</button>
         </nav>
 
@@ -99,7 +99,7 @@
 
           <section class="note">
             <h2>What comes next</h2>
-            <p>A coaching summary comes in a later phase. The dashboard shows the coach link, X, Y, and Z, intensity, the last minute of movement, and whether the current samples are still, gesturing, or excessive.</p>
+            <p>Analytics summarizes a saved practice. The dashboard shows the coach link, X, Y, and Z, intensity, the last minute of movement, and whether the current samples are still, gesturing, or excessive.</p>
           </section>
         </main>
 
@@ -156,6 +156,10 @@
             <h2 id="session-when">Session</h2>
             <p id="session-duration"></p>
             <p id="session-average"></p>
+            <dl class="axes" id="session-summary-numbers"></dl>
+            <p class="quiet">Average bands are on the relative score, not g or m/s².</p>
+            <h3>Summary</h3>
+            <ol id="session-summary" class="transitions"></ol>
             <p id="session-cap" class="quiet" hidden>Sample cap reached. Samples after 30 minutes were not stored.</p>
             <div class="chart-wrap">
               <canvas id="session-chart" aria-label="Practice intensity over time" role="img"></canvas>
@@ -168,6 +172,25 @@
             <ol id="session-excessive" class="transitions"></ol>
             <h3>Buzz</h3>
             <ol id="session-buzzes" class="transitions"></ol>
+          </section>
+        </main>
+
+        <main id="view-analytics" hidden>
+          <section class="card" id="analytics-list-card" aria-labelledby="analytics-heading">
+            <h2 id="analytics-heading">Analytics</h2>
+            <p class="quiet">A summary of a saved practice. The numbers come from that session. Average bands are on the relative score, not g or m/s².</p>
+            <div id="analytics-list" class="session-list"></div>
+            <p id="analytics-empty" class="quiet">No practice sessions yet.</p>
+          </section>
+          <section class="card" id="analytics-detail" hidden aria-labelledby="analytics-when">
+            <button type="button" id="analytics-back">All sessions</button>
+            <h2 id="analytics-when">Session</h2>
+            <dl class="axes" id="analytics-numbers"></dl>
+            <h3>Summary</h3>
+            <ol id="analytics-lines" class="transitions"></ol>
+            <div class="chart-wrap">
+              <canvas id="analytics-chart" aria-label="Practice intensity over time" role="img"></canvas>
+            </div>
           </section>
         </main>
 

@@ -13,9 +13,9 @@ import {
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
 import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, readBuzzSettings } from "/buzz.mjs";
 import { createMotionDetector } from "/motion.mjs";
+import { summarizeSession } from "/summary.mjs";
 import {
   SESSION_STORAGE_KEY,
-  averageMovement,
   readSessions,
   recordBuzz,
   recordExcessive,
@@ -391,10 +391,12 @@ const viewDashboard = document.querySelector("#view-dashboard");
 const viewEditor = document.querySelector("#view-editor");
 const viewStage = document.querySelector("#view-stage");
 const viewPractice = document.querySelector("#view-practice");
+const viewAnalytics = document.querySelector("#view-analytics");
 const viewSettings = document.querySelector("#view-settings");
 const navDashboard = document.querySelector("#nav-dashboard");
 const navPresentation = document.querySelector("#nav-presentation");
 const navPractice = document.querySelector("#nav-practice");
+const navAnalytics = document.querySelector("#nav-analytics");
 const navSettings = document.querySelector("#nav-settings");
 const buzzFrequency = document.querySelector("#buzz-frequency");
 const buzzDuration = document.querySelector("#buzz-duration");
@@ -570,6 +572,7 @@ function markNav(which) {
     [navDashboard, "dashboard"],
     [navPresentation, "presentation"],
     [navPractice, "practice"],
+    [navAnalytics, "analytics"],
     [navSettings, "settings"],
   ];
   for (const [item, name] of entries) {
@@ -584,6 +587,7 @@ function showDashboard() {
   viewEditor.hidden = true;
   viewStage.hidden = true;
   viewPractice.hidden = true;
+  viewAnalytics.hidden = true;
   viewSettings.hidden = true;
   markNav("dashboard");
   if (chart) requestAnimationFrame(() => {
@@ -598,6 +602,7 @@ function showEditor() {
   viewEditor.hidden = false;
   viewStage.hidden = true;
   viewPractice.hidden = true;
+  viewAnalytics.hidden = true;
   viewSettings.hidden = true;
   markNav("presentation");
   renderDecks();
@@ -608,6 +613,7 @@ function showStage() {
   viewEditor.hidden = true;
   viewStage.hidden = false;
   viewPractice.hidden = true;
+  viewAnalytics.hidden = true;
   viewSettings.hidden = true;
   markNav("presentation");
   renderDecks();
@@ -714,7 +720,18 @@ const sessionDuration = document.querySelector("#session-duration");
 const sessionAverage = document.querySelector("#session-average");
 const sessionCap = document.querySelector("#session-cap");
 const sessionChartCanvas = document.querySelector("#session-chart");
+const sessionSummaryNumbers = document.querySelector("#session-summary-numbers");
+const sessionSummary = document.querySelector("#session-summary");
 const sessionTransitions = document.querySelector("#session-transitions");
+const analyticsListCard = document.querySelector("#analytics-list-card");
+const analyticsList = document.querySelector("#analytics-list");
+const analyticsEmpty = document.querySelector("#analytics-empty");
+const analyticsDetail = document.querySelector("#analytics-detail");
+const analyticsBack = document.querySelector("#analytics-back");
+const analyticsWhen = document.querySelector("#analytics-when");
+const analyticsNumbers = document.querySelector("#analytics-numbers");
+const analyticsLines = document.querySelector("#analytics-lines");
+const analyticsChartCanvas = document.querySelector("#analytics-chart");
 const sessionGestures = document.querySelector("#session-gestures");
 const sessionExcessive = document.querySelector("#session-excessive");
 const sessionBuzzes = document.querySelector("#session-buzzes");
@@ -723,6 +740,7 @@ let practiceSessions = readSessions(localStorage.getItem(SESSION_STORAGE_KEY));
 let practiceSession = null;
 let practiceTick = null;
 let sessionChart = null;
+let analyticsChart = null;
 
 function savePracticeSessions() {
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(practiceSessions));
@@ -807,11 +825,12 @@ function renderSessionList() {
   }
 }
 
-function paintSessionChart(session) {
-  if (!globalThis.Chart) return;
+function paintStoredChart(current, canvas, session) {
+  if (!globalThis.Chart || !canvas) return current;
   const data = session.samples.map((sample) => ({ x: sample.timestamp, y: sample.movement * 100 }));
-  if (!sessionChart) {
-    sessionChart = new globalThis.Chart(sessionChartCanvas, {
+  let chart = current;
+  if (!chart) {
+    chart = new globalThis.Chart(canvas, {
       type: "line",
       data: { datasets: [{ data: [], borderColor: "#1e4d6b", backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, tension: 0.25 }] },
       options: {
@@ -837,15 +856,49 @@ function paintSessionChart(session) {
       },
     });
   }
-  sessionChart.data.datasets[0].data = data;
+  chart.data.datasets[0].data = data;
   if (data.length > 1) {
-    sessionChart.options.scales.x.min = data[0].x;
-    sessionChart.options.scales.x.max = data[data.length - 1].x;
+    chart.options.scales.x.min = data[0].x;
+    chart.options.scales.x.max = data[data.length - 1].x;
   } else {
-    delete sessionChart.options.scales.x.min;
-    delete sessionChart.options.scales.x.max;
+    delete chart.options.scales.x.min;
+    delete chart.options.scales.x.max;
   }
-  sessionChart.update("none");
+  chart.update("none");
+  return chart;
+}
+
+function fillSummary(session, numbers, lines) {
+  const summary = summarizeSession(session);
+  numbers.replaceChildren();
+  const average = summary.averageMovement == null
+    ? "—"
+    : `${Math.round(summary.averageMovement * 100)}% · ${summary.averageBand}`;
+  const stillness = summary.stillness == null ? "—" : `${Math.round(summary.stillness * 100)}%`;
+  const rows = [
+    ["Duration", summary.durationLabel],
+    ["Gestures", String(summary.gestures)],
+    ["Excessive episodes", String(summary.excessive)],
+    ["Average movement", average],
+    ["Stillness", stillness],
+    ["Consistency", summary.consistency],
+  ];
+  for (const [name, value] of rows) {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    term.textContent = name;
+    const detail = document.createElement("dd");
+    detail.textContent = value;
+    row.append(term, detail);
+    numbers.append(row);
+  }
+  lines.replaceChildren();
+  for (const line of summary.lines) {
+    const item = document.createElement("li");
+    item.textContent = line;
+    lines.append(item);
+  }
+  return summary;
 }
 
 function fillEventList(list, events, emptyText, format) {
@@ -869,11 +922,11 @@ function openSession(id) {
   sessionListCard.hidden = true;
   sessionDetail.hidden = false;
   sessionWhen.textContent = formatWhen(session.startedAt);
-  sessionDuration.textContent = `Duration ${formatElapsed(session.durationMs)}`;
-  const average = averageMovement(session);
-  sessionAverage.textContent = average == null
+  const summary = fillSummary(session, sessionSummaryNumbers, sessionSummary);
+  sessionDuration.textContent = `Duration ${summary.durationLabel}`;
+  sessionAverage.textContent = summary.averageMovement == null
     ? "Average intensity —"
-    : `Average intensity ${Math.round(average * 100)}%`;
+    : `Average intensity ${Math.round(summary.averageMovement * 100)}% · ${summary.averageBand}`;
   sessionCap.hidden = !session.capped;
   sessionTransitions.replaceChildren();
   if (session.transitions.length === 0) {
@@ -900,8 +953,45 @@ function openSession(id) {
     const reason = event.reason === "excessive" ? "excessive" : "manual";
     return `${formatWhen(event.timestamp)} · ${event.frequency} Hz · ${event.duration} ms · amplitude ${event.amplitude} · ${reason} · not played`;
   });
-  paintSessionChart(session);
+  sessionChart = paintStoredChart(sessionChart, sessionChartCanvas, session);
   requestAnimationFrame(() => sessionChart?.resize());
+}
+
+function renderAnalyticsList() {
+  analyticsList.replaceChildren();
+  analyticsEmpty.hidden = practiceSessions.sessions.length > 0;
+  for (const session of practiceSessions.sessions) {
+    const choice = document.createElement("button");
+    choice.type = "button";
+    choice.textContent = `${formatWhen(session.startedAt)} · ${formatElapsed(session.durationMs)}`;
+    choice.addEventListener("click", () => openAnalytics(session.id));
+    analyticsList.append(choice);
+  }
+}
+
+function openAnalytics(id) {
+  const session = practiceSessions.sessions.find((item) => item.id === id);
+  if (!session) return;
+  analyticsListCard.hidden = true;
+  analyticsDetail.hidden = false;
+  analyticsWhen.textContent = formatWhen(session.startedAt);
+  fillSummary(session, analyticsNumbers, analyticsLines);
+  analyticsChart = paintStoredChart(analyticsChart, analyticsChartCanvas, session);
+  requestAnimationFrame(() => analyticsChart?.resize());
+}
+
+function showAnalytics() {
+  if (presenting) endPresentation();
+  viewDashboard.hidden = true;
+  viewEditor.hidden = true;
+  viewStage.hidden = true;
+  viewPractice.hidden = true;
+  viewAnalytics.hidden = false;
+  viewSettings.hidden = true;
+  analyticsDetail.hidden = true;
+  analyticsListCard.hidden = false;
+  markNav("analytics");
+  renderAnalyticsList();
 }
 
 function showSettings() {
@@ -910,6 +1000,7 @@ function showSettings() {
   viewEditor.hidden = true;
   viewStage.hidden = true;
   viewPractice.hidden = true;
+  viewAnalytics.hidden = true;
   viewSettings.hidden = false;
   markNav("settings");
 }
@@ -920,6 +1011,7 @@ function showPractice() {
   viewEditor.hidden = true;
   viewStage.hidden = true;
   viewPractice.hidden = false;
+  viewAnalytics.hidden = true;
   viewSettings.hidden = true;
   sessionDetail.hidden = true;
   sessionListCard.hidden = false;
@@ -928,6 +1020,7 @@ function showPractice() {
 }
 
 navPractice.addEventListener("click", showPractice);
+navAnalytics.addEventListener("click", showAnalytics);
 navSettings.addEventListener("click", showSettings);
 buzzSend.addEventListener("click", sendBuzz);
 buzzTest.addEventListener("click", sendBuzz);
@@ -941,6 +1034,10 @@ practiceStop.addEventListener("click", finishPractice);
 sessionBack.addEventListener("click", () => {
   sessionDetail.hidden = true;
   sessionListCard.hidden = false;
+});
+analyticsBack.addEventListener("click", () => {
+  analyticsDetail.hidden = true;
+  analyticsListCard.hidden = false;
 });
 document.addEventListener("keydown", (event) => {
   if (!presenting) return;
