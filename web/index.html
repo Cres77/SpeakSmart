@@ -50,6 +50,21 @@
           <section class="card sensor" aria-labelledby="sensor-heading">
             <h2 id="sensor-heading">Accelerometer</h2>
             <p id="sensor-note">Waiting for a sample.</p>
+            <p class="intensity">
+              <span id="intensity-label">Intensity</span>
+              <span id="intensity-value">—</span>
+            </p>
+            <div
+              class="meter"
+              id="intensity-meter"
+              role="meter"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              aria-labelledby="intensity-label"
+            >
+              <span id="intensity-bar"></span>
+            </div>
             <dl class="axes">
               <div><dt>X</dt><dd id="accel-x">—</dd></div>
               <div><dt>Y</dt><dd id="accel-y">—</dd></div>
@@ -61,7 +76,7 @@
 
           <section class="note">
             <h2>What comes next</h2>
-            <p>Motion coaching and slides come in later phases. This page shows the link and the latest X, Y, and Z only.</p>
+            <p>A movement graph and slides come in later phases. This page shows the link, the latest X, Y, and Z, and one intensity.</p>
           </section>
         </main>
       </div>

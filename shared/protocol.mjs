@@ -120,7 +120,7 @@ function inspectSensor(message) {
     return fail("invalid", "sensor requires a deviceId.", "sensor");
   }
   if (message.movement !== undefined) {
-    return fail("invalid", "movement is not sent until a later phase.", "sensor");
+    return fail("invalid", "A coach-supplied movement score is not used.", "sensor");
   }
   if (message.transport !== undefined && typeof message.transport !== "string") {
     return fail("invalid", "transport must be a string.", "sensor");

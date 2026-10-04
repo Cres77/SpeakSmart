@@ -9,6 +9,9 @@ const sensorTime = document.querySelector("#sensor-time");
 const accelX = document.querySelector("#accel-x");
 const accelY = document.querySelector("#accel-y");
 const accelZ = document.querySelector("#accel-z");
+const intensityValue = document.querySelector("#intensity-value");
+const intensityMeter = document.querySelector("#intensity-meter");
+const intensityBar = document.querySelector("#intensity-bar");
 
 const labels = {
   connected: "Connected",
@@ -44,8 +47,24 @@ function clearSample() {
   accelX.textContent = "—";
   accelY.textContent = "—";
   accelZ.textContent = "—";
+  intensityValue.textContent = "—";
+  intensityBar.style.width = "0%";
+  intensityMeter.setAttribute("aria-valuenow", "0");
   sensorTime.textContent = "No sample yet";
   sensorNote.textContent = "Waiting for a sample.";
+}
+
+function renderIntensity(movement) {
+  if (!Number.isFinite(movement)) {
+    intensityValue.textContent = "—";
+    intensityBar.style.width = "0%";
+    intensityMeter.setAttribute("aria-valuenow", "0");
+    return;
+  }
+  const percent = Math.round(Math.min(1, Math.max(0, movement)) * 100);
+  intensityValue.textContent = `${percent}%`;
+  intensityBar.style.width = `${percent}%`;
+  intensityMeter.setAttribute("aria-valuenow", String(percent));
 }
 
 function renderSample(message) {
@@ -53,6 +72,7 @@ function renderSample(message) {
   accelX.textContent = formatAxis(message.accel.x);
   accelY.textContent = formatAxis(message.accel.y);
   accelZ.textContent = formatAxis(message.accel.z);
+  renderIntensity(message.movement);
   sensorTime.textContent = formatSampleTime(message.timestamp);
   const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
   sensorNote.textContent = standIn

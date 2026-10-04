@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { config as fileConfig } from "../shared/config.mjs";
+import { createMovementTracker } from "../shared/movement.mjs";
 import { inspectClientMessage } from "../shared/protocol.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,6 +29,7 @@ export async function startCoachServer(options = {}) {
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? fileConfig.heartbeatIntervalMs;
   const standIn = options.standIn ?? process.env.SPEAKSMART_STANDIN !== "0";
   const standInStdio = options.standInStdio ?? "inherit";
+  const movementTracker = createMovementTracker(fileConfig.movementThreshold);
 
   const browsers = new Set();
   let device = null;
@@ -68,6 +70,7 @@ export async function startCoachServer(options = {}) {
     deviceId = null;
     transport = null;
     lastSeen = null;
+    movementTracker.reset();
     broadcast();
   }
 
@@ -150,6 +153,7 @@ export async function startCoachServer(options = {}) {
     device = socket;
     clearGrace();
     reconnectPending = false;
+    movementTracker.reset();
     setConnected({
       deviceId: message.deviceId,
       transport: message.transport,
@@ -254,6 +258,7 @@ export async function startCoachServer(options = {}) {
             y: message.accel.y,
             z: message.accel.z,
           },
+          movement: movementTracker.sample(message.accel.x, message.accel.y, message.accel.z),
         };
         if (Number.isFinite(message.accel.g)) reading.accel.g = message.accel.g;
         if (transport) reading.transport = transport;

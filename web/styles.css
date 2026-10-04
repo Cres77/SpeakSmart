@@ -218,6 +218,40 @@ h2 {
   outline-offset: 3px;
 }
 
+.intensity {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 18px 0 8px;
+}
+
+#intensity-label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#intensity-value {
+  font-size: 40px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.meter {
+  height: 8px;
+  border-radius: 999px;
+  background: #efe8dc;
+  overflow: hidden;
+}
+
+#intensity-bar {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--blue);
+}
+
 .axes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
