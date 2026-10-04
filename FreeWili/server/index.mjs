@@ -1,11 +1,12 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { config as fileConfig } from "../shared/config.mjs";
 import { createMovementTracker } from "../shared/movement.mjs";
+import { pythonMissingMessage, resolvePython } from "../shared/python.mjs";
 import { inspectClientMessage } from "../shared/protocol.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -176,18 +177,13 @@ export async function startCoachServer(options = {}) {
   function ensureUsbBridge() {
     if (!usbBridge || standIn) return;
     if (usbChild && usbChild.exitCode === null && !usbChild.killed) return;
-    const python = "python3";
-    const probe = spawnSync(python, ["-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"]);
-    if (probe.error || probe.status !== 0) {
-      console.error(
-        "Python 3.10 or newer is required to open the FreeWili over USB.\n" +
-          "Install Python, then run:\n" +
-          "  python3 -m pip install -r bridge/requirements.txt",
-      );
+    const python = resolvePython();
+    if (!python) {
+      console.error(pythonMissingMessage());
       return;
     }
     const script = fileURLToPath(new URL("../bridge/coach_bridge.py", import.meta.url));
-    usbChild = spawn(python, [script], {
+    usbChild = spawn(python.command, [...python.args, script], {
       cwd: root,
       env: {
         ...process.env,
@@ -196,6 +192,7 @@ export async function startCoachServer(options = {}) {
         PYTHONDONTWRITEBYTECODE: "1",
       },
       stdio: "inherit",
+      windowsHide: true,
     });
   }
 

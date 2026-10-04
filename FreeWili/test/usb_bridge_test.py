@@ -21,11 +21,13 @@ from freewili_usb import (  # noqa: E402
     describe_no_main,
     hello_message,
     ignored_host_message,
+    install_command,
     main_cdc_port,
     motion_axes,
     network_target,
     open_main_port,
     play_pulse,
+    python_requirement_message,
     sample_window_lines,
     select_device,
 )
@@ -146,8 +148,32 @@ class SelectTests(unittest.TestCase):
         self.assertIn("not opened", describe_no_main(Board("FW4923", [display])))
         source = Path(__file__).resolve().parent.parent.joinpath("bridge/freewili_usb.py").read_text()
         self.assertNotIn("1200", source)
+        self.assertNotIn("/dev/", source)
         self.assertNotIn("onewili.connect(", source)
         self.assertNotIn("serial.Serial", source)
+
+    def test_main_cdc_accepts_a_windows_com_name(self):
+        main = Usb(0x093C, 0x2054, "FW4923", port="COM5", name="FWOG main ogfw 024")
+        display = Usb(0x093C, 0x2055, "FW4923", port="COM6", name="FWOG display ogfw 020")
+        chosen = Board("FW4923", [display, main])
+        self.assertEqual(main_cdc_port(chosen), "COM5")
+        seen = {}
+
+        class Cls:
+            def __init__(self, port):
+                seen["port"] = port
+
+            def open(self):
+                return self
+
+        open_main_port(main_cdc_port(chosen), Cls)
+        self.assertEqual(seen["port"], "COM5")
+        windows = python_requirement_message("win32")
+        self.assertIn(install_command("win32"), windows)
+        self.assertIn("py -m pip install -r bridge\\requirements.txt", windows)
+        self.assertIn("python.org", windows)
+        self.assertIn("Add python.exe to PATH", windows)
+        self.assertIn("Git is required", windows)
 
 
 class Result:

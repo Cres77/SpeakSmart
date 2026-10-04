@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server/index.mjs",
-    "diagnose": "python3 bridge/diagnose.py",
+    "diagnose": "node bridge/diagnose.mjs",
     "standin": "node server/dev-stand-in.mjs",
     "test": "node --test && make -C firmware test",
     "firmware:test": "make -C firmware test"

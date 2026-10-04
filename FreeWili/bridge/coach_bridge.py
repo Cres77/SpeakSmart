@@ -19,13 +19,13 @@ from pathlib import Path
 
 from freewili_usb import (
     COMMAND_WAIT_SEC,
-    INSTALL_COMMAND,
     LISTEN_NOTE,
     LibraryMissing,
     board_identity,
     hello_message,
     ignored_host_message,
     open_usb,
+    python_requirement_message,
     run_device,
 )
 
@@ -360,17 +360,12 @@ def run_coach(*, host, port, serial, open_device, stop_event, attempts=None, soc
 
 
 def python_too_old():
-    print(
-        "Python 3.10 or newer is required to open the FreeWili over USB.\n"
-        "Install Python, then run:\n"
-        f"  {INSTALL_COMMAND}",
-        flush=True,
-    )
+    print(python_requirement_message(), flush=True)
     raise SystemExit(2)
 
 
 def main():
-    if sys.version_info < (3, 10):
+    if sys.version_info < (3, 11):
         python_too_old()
     host_note = ignored_host_message(os.environ.get("FREEWILI_HOST", ""))
     if host_note:
