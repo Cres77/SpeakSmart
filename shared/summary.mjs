@@ -13,8 +13,10 @@
  *   These bands are on the relative score, not g or m/s².
  * - Stillness is the share of samples whose movement is below
  *   0.08 / movementThreshold (0.08 / 0.35). That is the stored form of
- *   “smoothed magnitude below 0.08”. If there are no movement samples,
- *   stillness is absent, not 0%.
+ *   “smoothed magnitude below 0.08”. Those two literals match
+ *   stillnessThreshold and movementThreshold in shared/config.json.
+ *   This file does not import the Node config reader; the page loads it.
+ *   If there are no movement samples, stillness is absent, not 0%.
  * - Consistency is Steady when there are at least 8 samples, the mean is
  *   between 0.15 and 0.70 inclusive, and the population standard deviation
  *   is at most 0.25. Otherwise it is Uneven. A near-zero session is Uneven,
@@ -24,9 +26,7 @@
  * rule matches. No other sentences are added.
  */
 
-import { config } from "./config.mjs";
-
-const STILLNESS_MOVEMENT = config.stillnessThreshold / config.movementThreshold;
+const STILLNESS_MOVEMENT = 0.08 / 0.35;
 const LOW_AVERAGE = 0.2;
 const MEDIUM_AVERAGE = 0.55;
 const STEADY_MIN_SAMPLES = 8;
