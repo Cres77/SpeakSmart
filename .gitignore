@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/FreeWili/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -39,3 +40,6 @@ next-env.d.ts
 Thumbs.db
 .idea
 .vscode
+
+# firmware host test binaries
+/FreeWili/firmware/build/

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpeakSmart</title>
+    <meta
+      name="description"
+      content="SpeakSmart is a wrist coach for presentation practice. This page shows the coach link."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="top">
+        <div class="brand">
+          <span class="mark" aria-hidden="true">S</span>
+          <div>
+            <p class="eyebrow">Presentation practice</p>
+            <h1>SpeakSmart</h1>
+          </div>
+        </div>
+        <p class="lede">A wrist coach for the way you move while you speak.</p>
+      </header>
+
+      <div class="body">
+        <nav class="rail" aria-label="Primary">
+          <button type="button" id="nav-dashboard" aria-current="page">Dashboard</button>
+          <button type="button" id="nav-presentation">Presentation</button>
+          <button type="button" id="nav-practice">Practice</button>
+          <button type="button" id="nav-analytics">Analytics</button>
+          <button type="button" id="nav-settings">Settings</button>
+        </nav>
+
+        <main id="view-dashboard">
+          <section class="card" aria-labelledby="link-heading">
+            <div class="card-head">
+              <h2 id="link-heading">Coach link</h2>
+              <p id="page-link">Reconnecting to this page</p>
+            </div>
+            <p class="status" data-status="connecting">
+              <span class="dot" id="coach-dot" data-status="connecting" aria-hidden="true"></span>
+              <span id="coach-label">Connecting</span>
+            </p>
+            <p id="coach-detail">Looking for the coach.</p>
+            <p id="coach-signal" hidden>Last signal just now</p>
+            <button type="button" id="reconnect">Reconnect</button>
+            <div class="actions">
+              <button type="button" id="buzz-send">Buzz FreeWili</button>
+            </div>
+            <p id="buzz-note" class="quiet"></p>
+          </section>
+
+          <section class="card sensor" aria-labelledby="sensor-heading">
+            <h2 id="sensor-heading">Accelerometer</h2>
+            <p id="sensor-note">Waiting for a sample.</p>
+            <p class="intensity">
+              <span id="intensity-label">Intensity</span>
+              <span id="intensity-value">—</span>
+            </p>
+            <div
+              class="meter"
+              id="intensity-meter"
+              role="meter"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              aria-labelledby="intensity-label"
+            >
+              <span id="intensity-bar"></span>
+            </div>
+            <dl class="axes">
+              <div><dt>X</dt><dd id="accel-x">—</dd></div>
+              <div><dt>Y</dt><dd id="accel-y">—</dd></div>
+              <div><dt>Z</dt><dd id="accel-z">—</dd></div>
+            </dl>
+            <p id="sensor-time">No sample yet</p>
+            <p id="sensor-units">Units unknown. These values are not converted.</p>
+            <div class="actions">
+              <button type="button" id="calibrate">Calibrate</button>
+              <button type="button" id="calibrate-clear">Clear calibration</button>
+            </div>
+            <p class="quiet">Hold still. This collects a resting pose from the live samples.</p>
+            <p id="calibration-note" class="quiet"></p>
+          </section>
+
+          <section class="card" aria-labelledby="motion-heading">
+            <h2 id="motion-heading">Since this hello</h2>
+            <p id="motion-state">—</p>
+            <dl class="axes">
+              <div><dt>Gestures</dt><dd id="motion-gestures">0</dd></div>
+              <div><dt>Excessive</dt><dd id="motion-excessive">0</dd></div>
+              <div><dt>Stillness</dt><dd id="motion-stillness">—</dd></div>
+            </dl>
+            <p class="quiet">From samples since the latest coach hello. A disconnect or a new hello starts these over.</p>
+          </section>
+
+          <section class="card chart-card" aria-labelledby="chart-heading">
+            <h2 id="chart-heading">Movement</h2>
+            <p id="chart-note">Last 60 seconds of intensity. A disconnect or a new coach hello clears this line.</p>
+            <div class="chart-wrap">
+              <canvas id="intensity-chart" aria-label="Movement intensity over time" role="img"></canvas>
+            </div>
+          </section>
+
+          <section class="note">
+            <h2>What comes next</h2>
+            <p>Analytics summarizes a saved practice. The dashboard shows the coach link, X, Y, and Z, intensity, the last minute of movement, and whether the current samples are still, gesturing, or excessive.</p>
+          </section>
+        </main>
+
+        <main id="view-editor" hidden>
+          <section class="card" aria-labelledby="decks-heading">
+            <h2 id="decks-heading">Presentations</h2>
+            <p class="quiet">Saved in this browser. This is the slideshow, not a practice log.</p>
+            <div id="deck-list" class="decks"></div>
+            <form id="deck-create" class="create-row">
+              <label class="field grow">
+                <span>New presentation</span>
+                <input id="deck-name-new" name="name" maxlength="80" placeholder="Name this presentation" autocomplete="off" />
+              </label>
+              <button type="submit" class="primary">Create presentation</button>
+            </form>
+          </section>
+
+          <section class="card" id="deck-editor" hidden aria-labelledby="editor-heading">
+            <h2 id="editor-heading">Slides</h2>
+            <label class="field">
+              <span>Presentation name</span>
+              <input id="deck-title" maxlength="80" autocomplete="off" />
+            </label>
+            <p id="slide-count">Slide 1 of 1</p>
+            <div class="actions">
+              <button type="button" id="slide-prev">Previous</button>
+              <button type="button" id="slide-next">Next</button>
+            </div>
+            <label class="field">
+              <span>Slide title</span>
+              <input id="slide-title" class="slide-title" maxlength="120" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Content</span>
+              <textarea id="slide-body" rows="6" maxlength="4000"></textarea>
+            </label>
+            <label class="field">
+              <span>Cue</span>
+              <input id="slide-cue" maxlength="240" autocomplete="off" />
+            </label>
+            <p class="quiet">Optional text for this slide, such as “Slow down hand movements”.</p>
+            <div class="actions">
+              <button type="button" id="slide-add">Add slide</button>
+              <button type="button" id="slide-delete">Delete slide</button>
+              <button type="button" id="present-start" class="primary">Start presentation</button>
+            </div>
+          </section>
+        </main>
+
+        <main id="view-practice" hidden>
+          <section class="card" id="session-list-card" aria-labelledby="practice-heading">
+            <h2 id="practice-heading">Practice</h2>
+            <p class="quiet">Saved in this browser, separate from your slides. A session starts only when you choose Start practice.</p>
+            <div id="session-list" class="session-list"></div>
+            <p id="session-empty" class="quiet">No practice sessions yet.</p>
+          </section>
+          <section class="card" id="session-detail" hidden aria-labelledby="session-when">
+            <button type="button" id="session-back">All sessions</button>
+            <h2 id="session-when">Session</h2>
+            <p id="session-duration"></p>
+            <p id="session-average"></p>
+            <dl class="axes" id="session-summary-numbers"></dl>
+            <p class="quiet">Average bands are on the relative score, not g or m/s².</p>
+            <h3>Summary</h3>
+            <ol id="session-summary" class="transitions"></ol>
+            <p id="session-cap" class="quiet" hidden>Sample cap reached. Samples after 30 minutes were not stored.</p>
+            <div class="chart-wrap">
+              <canvas id="session-chart" aria-label="Practice intensity over time" role="img"></canvas>
+            </div>
+            <h3 id="session-slides-heading">Slides</h3>
+            <ol id="session-transitions" class="transitions"></ol>
+            <h3>Gestures</h3>
+            <ol id="session-gestures" class="transitions"></ol>
+            <h3>Excessive movement</h3>
+            <ol id="session-excessive" class="transitions"></ol>
+            <h3>Buzz</h3>
+            <ol id="session-buzzes" class="transitions"></ol>
+          </section>
+        </main>
+
+        <main id="view-analytics" hidden>
+          <section class="card" id="analytics-list-card" aria-labelledby="analytics-heading">
+            <h2 id="analytics-heading">Analytics</h2>
+            <p class="quiet">A summary of a saved practice. The numbers come from that session. Average bands are on the relative score, not g or m/s².</p>
+            <div id="analytics-list" class="session-list"></div>
+            <p id="analytics-empty" class="quiet">No practice sessions yet.</p>
+          </section>
+          <section class="card" id="analytics-detail" hidden aria-labelledby="analytics-when">
+            <button type="button" id="analytics-back">All sessions</button>
+            <h2 id="analytics-when">Session</h2>
+            <dl class="axes" id="analytics-numbers"></dl>
+            <h3>Summary</h3>
+            <ol id="analytics-lines" class="transitions"></ol>
+            <div class="chart-wrap">
+              <canvas id="analytics-chart" aria-label="Practice intensity over time" role="img"></canvas>
+            </div>
+          </section>
+        </main>
+
+        <main id="view-settings" hidden>
+          <section class="card" aria-labelledby="settings-heading">
+            <h2 id="settings-heading">Settings</h2>
+            <p class="quiet">Saved in this browser, separate from presentations and practice logs. A buzz command does not play a tone.</p>
+            <label class="field">
+              <span>Frequency (Hz)</span>
+              <input id="buzz-frequency" type="number" min="50" max="2000" step="1" value="350" />
+            </label>
+            <label class="field">
+              <span>Duration (ms)</span>
+              <input id="buzz-duration" type="number" min="1" max="500" step="1" value="150" />
+            </label>
+            <label class="field">
+              <span>Amplitude</span>
+              <input id="buzz-amplitude" type="number" min="0" max="1" step="0.01" value="0.2" />
+            </label>
+            <label class="check">
+              <input id="buzz-automatic" type="checkbox" />
+              <span>Automatic movement feedback</span>
+            </label>
+            <label class="check">
+              <input id="buzz-cue" type="checkbox" />
+              <span>Buzz on slide cue</span>
+            </label>
+            <label class="field">
+              <span>Cooldown (ms)</span>
+              <input id="buzz-cooldown" type="number" min="0" step="1" value="3000" />
+            </label>
+            <div class="actions">
+              <button type="button" id="buzz-test">Test Buzz</button>
+            </div>
+            <p id="settings-buzz-note" class="quiet"></p>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <section id="view-stage" class="stage" hidden aria-labelledby="stage-title">
+      <header class="stage-top">
+        <div class="stage-bar">
+          <p class="stage-quiet">
+            <span class="dot" id="stage-dot" data-status="connecting" aria-hidden="true"></span>
+            <span id="stage-status">Connecting</span>
+          </p>
+          <p class="stage-quiet">Intensity <span id="stage-intensity">—</span></p>
+          <p class="clocks">
+            <span class="clock"><span class="clock-label">Presentation</span> <span id="stage-timer">0:00</span></span>
+            <span class="clock" id="practice-clock" hidden><span class="clock-label">Practice</span> <span id="practice-timer">0:00</span></span>
+          </p>
+        </div>
+        <p id="practice-cap" class="practice-cap" hidden>30-minute sample cap reached.</p>
+      </header>
+      <article class="stage-slide">
+        <p id="stage-count">Slide 1 of 1</p>
+        <h2 id="stage-title"></h2>
+        <p id="stage-body"></p>
+        <p id="stage-cue" class="quiet stage-cue" hidden></p>
+      </article>
+      <footer class="stage-controls">
+        <button type="button" id="stage-prev">Previous</button>
+        <button type="button" id="stage-next">Next</button>
+        <button type="button" id="practice-start">Start practice</button>
+        <button type="button" id="practice-stop" hidden>Stop practice</button>
+        <button type="button" id="present-end" class="primary">End presentation</button>
+      </footer>
+    </section>
+    <script src="/chart.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
