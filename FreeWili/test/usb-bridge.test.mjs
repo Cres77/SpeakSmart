@@ -105,10 +105,12 @@ def answer():
             command = commands.get(timeout=0.1)
         except queue.Empty:
             continue
+        class Processor:
+            name = "Display"
         class Fake:
-            def play_audio_tone(self, frequency_hz, duration_sec, amplitude):
+            def play_audio_tone(self, frequency_hz, duration_sec, amplitude, processor):
                 print(f"TONE {frequency_hz} {duration_sec} {amplitude}", flush=True)
-        command["reply"].put(play_pulse(Fake(), command["frequency"], command["duration"], command["amplitude"]))
+        command["reply"].put(play_pulse(Fake(), command["frequency"], command["duration"], command["amplitude"], (Processor(),)))
 
 threading.Thread(target=answer, daemon=True).start()
 threading.Thread(target=lambda: (time.sleep(0.2), samples.push({"x": 64, "y": -768, "z": 16448, "g": 2})), daemon=True).start()

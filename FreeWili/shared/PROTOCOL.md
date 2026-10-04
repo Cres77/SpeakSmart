@@ -192,7 +192,7 @@ The website role is `browser`. A second click while that pulse’s duration has 
 { "type": "buzz", "role": "device", "frequency": 350, "duration": 150, "amplitude": 0.2, "played": false, "timestamp": 1710000009100 }
 ```
 
-The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is false. The development stand-in does not set `played` to true. The server forwards `played: false`. An optional `note` string is forwarded when the coach sends one. The USB bridge calls `FreeWili.play_audio_tone(frequency_hz, duration_sec, amplitude)` and still sends `played: false`, with `note` set to the documented line `v54 firmware: Response frame always returns failure`. The host firmware function `buzz` does not call a speaker and does not return success.
+The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is false. The development stand-in does not set `played` to true. The server forwards `played: false`. An optional `note` string is forwarded when the coach sends one. The USB bridge calls `FreeWili.play_audio_tone(frequency_hz, duration_sec, amplitude, processor)` on Display, and on Main when Display returns a response-frame timeout. The v54 result is unreliable, so the ack still sends `played: false`, with `note` set to `v54 firmware: Response frame always returns failure`. The page asks you to listen for the tone. The host firmware function `buzz` does not call a speaker and does not return success.
 
 Two verified tone APIs use different duration units. Do not mix them, and do not call them from the host build:
 

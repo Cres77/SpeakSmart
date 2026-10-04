@@ -48,11 +48,16 @@ class SampleQueue:
 
     def __init__(self, limit=SAMPLE_LIMIT):
         self._items = queue.Queue(limit)
+        self._lock = threading.Lock()
+        self._received = 0
+        self._sent = 0
 
     def push(self, sample):
         while True:
             try:
                 self._items.put_nowait(sample)
+                with self._lock:
+                    self._received += 1
                 return
             except queue.Full:
                 try:
@@ -65,6 +70,17 @@ class SampleQueue:
             return self._items.get_nowait()
         except queue.Empty:
             return None
+
+    def mark_sent(self):
+        with self._lock:
+            self._sent += 1
+
+    def take_counts(self):
+        with self._lock:
+            received, sent = self._received, self._sent
+            self._received = 0
+            self._sent = 0
+        return received, sent
 
 
 class CoachSocket:
@@ -273,6 +289,7 @@ def serve_link(host, port, serial, samples, commands, stop_event, failed, config
                     if sample is None:
                         break
                     ws.send_text(json.dumps(sensor_message(serial, sample, now_ms())))
+                    samples.mark_sent()
         except Exception:
             if stop_event.is_set():
                 break

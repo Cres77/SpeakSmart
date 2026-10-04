@@ -53,6 +53,7 @@ client in this package, so FREEWILI_HOST is not a connection.
 """
 
 import math
+import time
 
 # Named in freewili-finder v0.5.0 include/usbdef.hpp. One board can expose all of these.
 NAMED_USB_IDS = (
@@ -216,18 +217,62 @@ def _finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def play_pulse(device, frequency_hz, duration_ms, amplitude):
-    """One play_audio_tone call. Duration in the protocol is milliseconds; the API takes seconds.
+def response_frame_timeout(text):
+    """True for the library's response-frame timeout string."""
+    return isinstance(text, str) and "Failed to read response frame" in text
 
-    The published example says the v54 response frame always returns failure, so this
-    never reports played. The call is still made.
+
+def result_is_err(result):
+    is_err = getattr(result, "is_err", None)
+    return bool(callable(is_err) and is_err())
+
+
+def result_err_text(result):
+    err = getattr(result, "err", None)
+    if not callable(err):
+        return ""
+    text = err()
+    return text if isinstance(text, str) else str(text)
+
+
+def play_pulse(device, frequency_hz, duration_ms, amplitude, processors):
+    """Call play_audio_tone. Duration in the protocol is milliseconds; the API takes seconds.
+
+    Display is first. A response-frame timeout tries the next processor.
+    The v54 response frame is unreliable, so played stays false. This does not
+    report that a tone was heard.
     """
     duration_sec = float(duration_ms) / 1000.0
-    try:
-        device.play_audio_tone(int(frequency_hz), duration_sec, float(amplitude))
-    except Exception as ex:
-        print(f"play_audio_tone raised {ex}", flush=True)
+    frequency = int(frequency_hz)
+    level = float(amplitude)
+    for index, processor in enumerate(processors):
+        name = getattr(processor, "name", str(processor))
+        try:
+            result = device.play_audio_tone(frequency, duration_sec, level, processor)
+        except Exception as ex:
+            print(f"play_audio_tone {name} raised {ex}", flush=True)
+            if index == 0 and response_frame_timeout(str(ex)):
+                continue
+            break
+        if result_is_err(result):
+            err = result_err_text(result)
+            print(f"play_audio_tone {name}: Err: {err}", flush=True)
+            if index == 0 and response_frame_timeout(err):
+                continue
+            break
+        ok = getattr(result, "ok", None)
+        value = ok() if callable(ok) else result
+        print(f"play_audio_tone {name}: Ok: {value}", flush=True)
+        break
     return {"played": False, "note": TONE_FAILURE_NOTE}
+
+
+def sample_window_lines(received, sent, enabled):
+    """One 5 second USB window. enabled means enable_accel_events returned Ok."""
+    lines = [f"accel samples in 5s: received {received}, sent {sent}"]
+    if enabled and received == 0:
+        lines.append("The board accepted the command but sent no accelerometer samples.")
+    return lines
 
 
 def network_target(_host):
@@ -316,12 +361,24 @@ def run_device(device, samples, commands, stop_event, failed, interval_ms):
             interval_ms,
             (FreeWiliProcessorType.Display, FreeWiliProcessorType.Main),
         )
+        window_started = time.monotonic()
         while not stop_event.is_set() and not failed.is_set():
             command = _next_command(commands)
             if command is not None:
-                pulse = play_pulse(device, command["frequency"], command["duration"], command["amplitude"])
+                pulse = play_pulse(
+                    device,
+                    command["frequency"],
+                    command["duration"],
+                    command["amplitude"],
+                    (FreeWiliProcessorType.Display, FreeWiliProcessorType.Main),
+                )
                 command["reply"].put(pulse)
             device.process_events()
+            if time.monotonic() - window_started >= 5:
+                received, sent = samples.take_counts()
+                for line in sample_window_lines(received, sent, enabled_on is not None):
+                    print(line, flush=True)
+                window_started = time.monotonic()
             stop_event.wait(0.005)
     except Exception as ex:
         print(f"FreeWili read failed: {ex}", flush=True)

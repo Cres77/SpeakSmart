@@ -425,12 +425,11 @@ function connectPage() {
     }
     if (message.type === "buzz") {
       const base = lastBuzzReason === "excessive"
-        ? "Excessive movement detected. No tone was played."
+        ? "Excessive movement detected. Command sent to the FreeWili. The board does not confirm playback; listen for the tone."
         : lastBuzzReason === "cue"
-          ? "Cue sent. No tone was played."
-          : "Command sent. No tone was played.";
-      const note = typeof message.note === "string" && message.note ? ` ${message.note}` : "";
-      setBuzzNote(`${base}${note}`);
+          ? "Cue sent. Command sent to the FreeWili. The board does not confirm playback; listen for the tone."
+          : "Command sent to the FreeWili. The board does not confirm playback; listen for the tone.";
+      setBuzzNote(base);
       return;
     }
     if (message.type === "error" && message.for === "buzz") {
@@ -675,7 +674,7 @@ function considerAutomatic(event) {
     amplitude: command.amplitude,
     timestamp: command.timestamp,
   }));
-  setBuzzNote("Excessive movement detected. No tone was played.");
+  setBuzzNote("Excessive movement detected. Command sent to the FreeWili. The board does not confirm playback; listen for the tone.");
 }
 
 function saveBuzzForm() {

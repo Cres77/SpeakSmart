@@ -71,5 +71,7 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /id="buzz-cue"/);
   assert.doesNotMatch(html, /id="buzz-cue"[^>]*checked/);
   assert.match(script, /createSlideCues/);
-  assert.match(script, /Cue sent\. No tone was played\./);
+  assert.match(script, /Command sent to the FreeWili\. The board does not confirm playback; listen for the tone\./);
+  assert.match(script, /Cue sent\. Command sent to the FreeWili\. The board does not confirm playback; listen for the tone\./);
+  assert.doesNotMatch(script, /No tone was played/);
 });

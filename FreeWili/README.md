@@ -28,6 +28,13 @@ npm start
 
 If Python or the package is missing, `npm start` prints that install command. `freewili` 0.0.51 has no IP argument, so `FREEWILI_HOST` is unused and the bridge stays on USB.
 
+`npm run diagnose` opens that same board and prints, for Display and then Main, `get_app_info`, `enable_accel_events(True, 100, processor)`, event counts from 5 seconds of `process_events()`, and `play_audio_tone(350, 0.15, 0.2, processor)`. It asks you to note whether you heard a tone. It does not report that a tone played.
+
+```bash
+cd FreeWili
+npm run diagnose
+```
+
 The development stand-in is off unless you ask for it. It is not a FreeWili. The page says so while that process is the coach.
 
 ```bash
@@ -50,7 +57,7 @@ That runs the server tests and `make -C firmware test`. The firmware test checks
 
 The on-device C build is unchanged. `hardware_accel_poll` returns no sample. `fwwasm.h` does not define a sensor payload struct, and `enable_motion_stream` has no documented numeric frame, so neither is parsed. `hardware_wifi_join` still returns unverified and the device entry still exits 2. The live board path is the USB host bridge in `bridge/`, which uses `freewili` on the computer the board is plugged into.
 
-A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page can send one pulse. The coach answers that no tone was played. Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`. Practice sessions are saved at `speaksmart.sessions`.
+A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page can send one pulse. The acknowledgement stays `played: false`. The page says the command was sent and asks you to listen for the tone. Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`. Practice sessions are saved at `speaksmart.sessions`.
 
 ## Later phases
 
@@ -63,7 +70,7 @@ A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page c
 7. Gesture and excessive-movement detection. Done on the page from the server's smoothed magnitude and movement score. A practice review lists the events from that practice. Buzz stays empty. No tone and no coaching sentence.
 8. Manual buzz command. Done. Settings stores frequency, duration, and amplitude in this browser. Buzz FreeWili and Test Buzz each send one command. The pulse cannot be retriggered until its duration has elapsed. The stand-in replies `played: false`. No automatic buzz.
 9. Automatic buzz with cooldown. Done. Settings can turn on automatic movement feedback. It is off by default. An excessive hold sends one buzz, then waits `buzzCooldownMs` (3000 ms) before another. The acknowledgement stays `played: false`.
-10. Session analytics and coaching summary. Done. Analytics and the practice review call one summary of the saved session. Automatic feedback stays off unless the setting is on. No tone is played.
+10. Session analytics and coaching summary. Done. Analytics and the practice review call one summary of the saved session. Automatic feedback stays off unless the setting is on. The acknowledgement stays `played: false`.
 
 A resting pose can be saved in this browser under `speaksmart.calibration`. The server uses that vector as the movement baseline. Clearing it restores the first-sample baseline. Automatic feedback stays off unless the setting is on.
 

@@ -122,7 +122,7 @@ export function summarizeSession(session) {
       lines.push(`Movement continued through ${percent(1 - stillness)}% of the recorded samples.`);
     }
     if (automaticBuzzes >= 1) {
-      lines.push(`Automatic feedback was requested ${automaticBuzzes} times. No tone was played.`);
+      lines.push(`Automatic feedback was requested ${automaticBuzzes} times. The board does not confirm playback; listen for the tone.`);
     }
   }
 
