@@ -27,7 +27,7 @@
         <nav class="rail" aria-label="Primary">
           <button type="button" id="nav-dashboard" aria-current="page">Dashboard</button>
           <button type="button" id="nav-presentation">Presentation</button>
-          <button type="button" id="nav-practice" disabled>Practice <span class="later">Later</span></button>
+          <button type="button" id="nav-practice">Practice</button>
           <button type="button" id="nav-analytics" disabled>Analytics <span class="later">Later</span></button>
           <button type="button" id="nav-settings" disabled>Settings <span class="later">Later</span></button>
         </nav>
@@ -84,7 +84,7 @@
 
           <section class="note">
             <h2>What comes next</h2>
-            <p>Practice recording comes in a later phase. The dashboard shows the coach link, X, Y, and Z, intensity, and the last minute of movement.</p>
+            <p>A coaching summary comes in a later phase. The dashboard shows the coach link, X, Y, and Z, intensity, and the last minute of movement.</p>
           </section>
         </main>
 
@@ -128,17 +128,45 @@
             </div>
           </section>
         </main>
+
+        <main id="view-practice" hidden>
+          <section class="card" id="session-list-card" aria-labelledby="practice-heading">
+            <h2 id="practice-heading">Practice</h2>
+            <p class="quiet">Saved in this browser, separate from your slides. A session starts only when you choose Start practice.</p>
+            <div id="session-list" class="session-list"></div>
+            <p id="session-empty" class="quiet">No practice sessions yet.</p>
+          </section>
+          <section class="card" id="session-detail" hidden aria-labelledby="session-when">
+            <button type="button" id="session-back">All sessions</button>
+            <h2 id="session-when">Session</h2>
+            <p id="session-duration"></p>
+            <p id="session-average"></p>
+            <p id="session-cap" class="quiet" hidden>Sample cap reached. Samples after 30 minutes were not stored.</p>
+            <div class="chart-wrap">
+              <canvas id="session-chart" aria-label="Practice intensity over time" role="img"></canvas>
+            </div>
+            <h3 id="session-slides-heading">Slides</h3>
+            <ol id="session-transitions" class="transitions"></ol>
+            <p id="session-events" class="quiet"></p>
+          </section>
+        </main>
       </div>
     </div>
 
     <section id="view-stage" class="stage" hidden aria-labelledby="stage-title">
-      <header class="stage-bar">
-        <p class="stage-quiet">
-          <span class="dot" id="stage-dot" data-status="connecting" aria-hidden="true"></span>
-          <span id="stage-status">Connecting</span>
-        </p>
-        <p class="stage-quiet">Intensity <span id="stage-intensity">—</span></p>
-        <p id="stage-timer">0:00</p>
+      <header class="stage-top">
+        <div class="stage-bar">
+          <p class="stage-quiet">
+            <span class="dot" id="stage-dot" data-status="connecting" aria-hidden="true"></span>
+            <span id="stage-status">Connecting</span>
+          </p>
+          <p class="stage-quiet">Intensity <span id="stage-intensity">—</span></p>
+          <p class="clocks">
+            <span class="clock"><span class="clock-label">Presentation</span> <span id="stage-timer">0:00</span></span>
+            <span class="clock" id="practice-clock" hidden><span class="clock-label">Practice</span> <span id="practice-timer">0:00</span></span>
+          </p>
+        </div>
+        <p id="practice-cap" class="practice-cap" hidden>30-minute sample cap reached.</p>
       </header>
       <article class="stage-slide">
         <p id="stage-count">Slide 1 of 1</p>
@@ -148,6 +176,8 @@
       <footer class="stage-controls">
         <button type="button" id="stage-prev">Previous</button>
         <button type="button" id="stage-next">Next</button>
+        <button type="button" id="practice-start">Start practice</button>
+        <button type="button" id="practice-stop" hidden>Stop practice</button>
         <button type="button" id="present-end" class="primary">End presentation</button>
       </footer>
     </section>

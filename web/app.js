@@ -11,6 +11,15 @@ import {
   slidePosition,
 } from "/deck.mjs";
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
+import {
+  SESSION_STORAGE_KEY,
+  averageMovement,
+  readSessions,
+  recordSample,
+  recordTransition,
+  startSession,
+  stopSession,
+} from "/session.mjs";
 
 const label = document.querySelector("#coach-label");
 const dot = document.querySelector("#coach-dot");
@@ -168,6 +177,7 @@ function renderSample(message) {
   accelZ.textContent = formatAxis(message.accel.z);
   renderIntensity(message.movement);
   if (series.push(message.timestamp, message.movement).action !== "ignore") paintChart();
+  noteSample(message);
   sensorTime.textContent = formatSampleTime(message.timestamp);
   const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
   sensorNote.textContent = standIn
@@ -298,8 +308,10 @@ connectPage();
 const viewDashboard = document.querySelector("#view-dashboard");
 const viewEditor = document.querySelector("#view-editor");
 const viewStage = document.querySelector("#view-stage");
+const viewPractice = document.querySelector("#view-practice");
 const navDashboard = document.querySelector("#nav-dashboard");
 const navPresentation = document.querySelector("#nav-presentation");
+const navPractice = document.querySelector("#nav-practice");
 const deckList = document.querySelector("#deck-list");
 const deckCreate = document.querySelector("#deck-create");
 const deckNameNew = document.querySelector("#deck-name-new");
@@ -384,13 +396,25 @@ function renderDecks() {
   stageBody.textContent = slide?.content ?? "";
 }
 
+function markNav(which) {
+  const entries = [
+    [navDashboard, "dashboard"],
+    [navPresentation, "presentation"],
+    [navPractice, "practice"],
+  ];
+  for (const [item, name] of entries) {
+    if (name === which) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  }
+}
+
 function showDashboard() {
   if (presenting) endPresentation();
   viewDashboard.hidden = false;
   viewEditor.hidden = true;
   viewStage.hidden = true;
-  navDashboard.setAttribute("aria-current", "page");
-  navPresentation.removeAttribute("aria-current");
+  viewPractice.hidden = true;
+  markNav("dashboard");
   if (chart) requestAnimationFrame(() => {
     chart.resize();
     paintChart();
@@ -402,8 +426,8 @@ function showEditor() {
   viewDashboard.hidden = true;
   viewEditor.hidden = false;
   viewStage.hidden = true;
-  navDashboard.removeAttribute("aria-current");
-  navPresentation.setAttribute("aria-current", "page");
+  viewPractice.hidden = true;
+  markNav("presentation");
   renderDecks();
 }
 
@@ -411,9 +435,10 @@ function showStage() {
   viewDashboard.hidden = true;
   viewEditor.hidden = true;
   viewStage.hidden = false;
-  navDashboard.removeAttribute("aria-current");
-  navPresentation.setAttribute("aria-current", "page");
+  viewPractice.hidden = true;
+  markNav("presentation");
   renderDecks();
+  paintPracticeControls();
 }
 
 function formatElapsed(ms) {
@@ -435,6 +460,7 @@ function startPresentation() {
 }
 
 function endPresentation() {
+  finishPractice();
   presenting = false;
   clearInterval(presentationTimer);
   presentationTimer = null;
@@ -443,7 +469,20 @@ function endPresentation() {
 function step(direction) {
   const deck = activeDeck();
   if (!deck) return;
-  replaceDeck(direction === "next" ? nextSlide(deck) : previousSlide(deck));
+  const fromIndex = deck.index;
+  const next = direction === "next" ? nextSlide(deck) : previousSlide(deck);
+  if (next.index === fromIndex) return;
+  replaceDeck(next);
+  if (!practiceSession) return;
+  const slide = next.slides[next.index];
+  practiceSession = recordTransition(practiceSession, {
+    timestamp: Date.now(),
+    deckId: next.id,
+    deckName: next.name,
+    fromIndex,
+    toIndex: next.index,
+    slideTitle: slide?.title ?? "",
+  });
 }
 
 navDashboard.addEventListener("click", showDashboard);
@@ -486,6 +525,203 @@ stagePrev.addEventListener("click", () => step("prev"));
 stageNext.addEventListener("click", () => step("next"));
 presentStart.addEventListener("click", startPresentation);
 presentEnd.addEventListener("click", showEditor);
+
+const practiceStart = document.querySelector("#practice-start");
+const practiceStop = document.querySelector("#practice-stop");
+const practiceClock = document.querySelector("#practice-clock");
+const practiceTimer = document.querySelector("#practice-timer");
+const practiceCap = document.querySelector("#practice-cap");
+const sessionListCard = document.querySelector("#session-list-card");
+const sessionList = document.querySelector("#session-list");
+const sessionEmpty = document.querySelector("#session-empty");
+const sessionDetail = document.querySelector("#session-detail");
+const sessionBack = document.querySelector("#session-back");
+const sessionWhen = document.querySelector("#session-when");
+const sessionDuration = document.querySelector("#session-duration");
+const sessionAverage = document.querySelector("#session-average");
+const sessionCap = document.querySelector("#session-cap");
+const sessionChartCanvas = document.querySelector("#session-chart");
+const sessionTransitions = document.querySelector("#session-transitions");
+const sessionEvents = document.querySelector("#session-events");
+
+let practiceSessions = readSessions(localStorage.getItem(SESSION_STORAGE_KEY));
+let practiceSession = null;
+let practiceTick = null;
+let sessionChart = null;
+
+function savePracticeSessions() {
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(practiceSessions));
+}
+
+function paintPracticeControls() {
+  const running = Boolean(practiceSession);
+  practiceStart.hidden = running;
+  practiceStop.hidden = !running;
+  practiceClock.hidden = !running;
+  if (!running) practiceCap.hidden = true;
+  else practiceCap.hidden = !practiceSession.capped;
+}
+
+function noteSample(message) {
+  if (!practiceSession || !Number.isFinite(message.movement)) return;
+  practiceSession = recordSample(practiceSession, {
+    timestamp: message.timestamp,
+    x: message.accel.x,
+    y: message.accel.y,
+    z: message.accel.z,
+    movement: message.movement,
+  });
+  practiceCap.hidden = !practiceSession.capped;
+}
+
+function beginPractice() {
+  if (!presenting || practiceSession) return;
+  const deck = activeDeck();
+  const slide = deck?.slides[deck.index];
+  const startedAt = Date.now();
+  practiceSession = startSession({
+    startedAt,
+    slide: deck && slide ? {
+      deckId: deck.id,
+      deckName: deck.name,
+      fromIndex: deck.index,
+      toIndex: deck.index,
+      slideTitle: slide.title,
+    } : null,
+  });
+  practiceTimer.textContent = "0:00";
+  clearInterval(practiceTick);
+  practiceTick = setInterval(() => {
+    if (!practiceSession) return;
+    practiceTimer.textContent = formatElapsed(Date.now() - practiceSession.startedAt);
+  }, 200);
+  paintPracticeControls();
+}
+
+function finishPractice() {
+  if (!practiceSession) return;
+  const saved = stopSession(practiceSession, Date.now());
+  practiceSession = null;
+  clearInterval(practiceTick);
+  practiceTick = null;
+  practiceSessions = { sessions: [saved, ...practiceSessions.sessions] };
+  savePracticeSessions();
+  paintPracticeControls();
+}
+
+function formatWhen(timestamp) {
+  return new Date(timestamp).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function renderSessionList() {
+  sessionList.replaceChildren();
+  sessionEmpty.hidden = practiceSessions.sessions.length > 0;
+  for (const session of practiceSessions.sessions) {
+    const choice = document.createElement("button");
+    choice.type = "button";
+    choice.textContent = `${formatWhen(session.startedAt)} · ${formatElapsed(session.durationMs)}`;
+    choice.addEventListener("click", () => openSession(session.id));
+    sessionList.append(choice);
+  }
+}
+
+function paintSessionChart(session) {
+  if (!globalThis.Chart) return;
+  const data = session.samples.map((sample) => ({ x: sample.timestamp, y: sample.movement * 100 }));
+  if (!sessionChart) {
+    sessionChart = new globalThis.Chart(sessionChartCanvas, {
+      type: "line",
+      data: { datasets: [{ data: [], borderColor: "#1e4d6b", backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, tension: 0.25 }] },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: {
+            type: "linear",
+            title: { display: true, text: "Time", color: "#5e6874" },
+            ticks: { maxTicksLimit: 6, color: "#5e6874", callback: (value) => formatChartTime(value) },
+            grid: { color: "#e4dacb" },
+          },
+          y: {
+            min: 0,
+            max: 100,
+            title: { display: true, text: "Intensity", color: "#5e6874" },
+            ticks: { color: "#5e6874", callback: (value) => `${value}%` },
+            grid: { color: "#e4dacb" },
+          },
+        },
+      },
+    });
+  }
+  sessionChart.data.datasets[0].data = data;
+  if (data.length > 1) {
+    sessionChart.options.scales.x.min = data[0].x;
+    sessionChart.options.scales.x.max = data[data.length - 1].x;
+  } else {
+    delete sessionChart.options.scales.x.min;
+    delete sessionChart.options.scales.x.max;
+  }
+  sessionChart.update("none");
+}
+
+function openSession(id) {
+  const session = practiceSessions.sessions.find((item) => item.id === id);
+  if (!session) return;
+  sessionListCard.hidden = true;
+  sessionDetail.hidden = false;
+  sessionWhen.textContent = formatWhen(session.startedAt);
+  sessionDuration.textContent = `Duration ${formatElapsed(session.durationMs)}`;
+  const average = averageMovement(session);
+  sessionAverage.textContent = average == null
+    ? "Average intensity —"
+    : `Average intensity ${Math.round(average * 100)}%`;
+  sessionCap.hidden = !session.capped;
+  sessionTransitions.replaceChildren();
+  if (session.transitions.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = "No slide changes.";
+    sessionTransitions.append(item);
+  }
+  for (const change of session.transitions) {
+    const item = document.createElement("li");
+    const title = change.slideTitle || "Untitled slide";
+    const label = change.fromIndex === change.toIndex
+      ? `Started on ${title}`
+      : `${change.fromIndex + 1} → ${change.toIndex + 1} · ${title}`;
+    item.textContent = `${formatWhen(change.timestamp)} · ${label}`;
+    sessionTransitions.append(item);
+  }
+  sessionEvents.textContent = "Gesture, excessive-movement, and buzz lists are empty.";
+  paintSessionChart(session);
+  requestAnimationFrame(() => sessionChart?.resize());
+}
+
+function showPractice() {
+  if (presenting) endPresentation();
+  viewDashboard.hidden = true;
+  viewEditor.hidden = true;
+  viewStage.hidden = true;
+  viewPractice.hidden = false;
+  sessionDetail.hidden = true;
+  sessionListCard.hidden = false;
+  markNav("practice");
+  renderSessionList();
+}
+
+navPractice.addEventListener("click", showPractice);
+practiceStart.addEventListener("click", beginPractice);
+practiceStop.addEventListener("click", finishPractice);
+sessionBack.addEventListener("click", () => {
+  sessionDetail.hidden = true;
+  sessionListCard.hidden = false;
+});
 document.addEventListener("keydown", (event) => {
   if (!presenting) return;
   if (event.key === "ArrowRight") step("next");

@@ -37,7 +37,7 @@ That runs the server tests and `make -C firmware test`. The firmware test checks
 
 `hardware_accel_poll` returns no sample. `fwwasm.h` does not define a sensor payload struct, and `enable_motion_stream` has no documented numeric frame, so neither is parsed. `hardware_wifi_join` still returns unverified and the device entry still exits 2.
 
-There is no session recording or buzzer. `buzz` stays reserved in [shared/PROTOCOL.md](shared/PROTOCOL.md). Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`.
+`buzz` stays reserved in [shared/PROTOCOL.md](shared/PROTOCOL.md). Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`. Practice sessions are saved at `speaksmart.sessions`.
 
 ## Later phases
 
@@ -46,7 +46,7 @@ There is no session recording or buzzer. `buzz` stays reserved in [shared/PROTOC
 3. Movement intensity. Done on the server and the page. The stand-in still sends raw X, Y, and Z. The C binary does not score samples.
 4. Live movement graph. Done on the page from the server's intensity. About 4 points per second, last 60 seconds. Cleared on disconnect and on a new coach hello.
 5. Presentation and slideshow. Done in the browser. Create a deck, edit slides, and present them with a timer. Leaving presentation mode ends it. Decks stay in `localStorage` under `speaksmart.decks`.
-6. Record practice sessions.
+6. Record practice sessions. Done in the browser. Start practice while presenting, then review the saved session under Practice. Sessions stay in `localStorage` under `speaksmart.sessions`, separate from decks. Gesture, excessive-movement, and buzz lists are stored empty.
 7. Gesture and excessive-movement detection.
 8. FreeWili buzz commands.
 9. Automatic buzz with cooldown.

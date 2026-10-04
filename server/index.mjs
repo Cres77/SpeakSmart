@@ -24,6 +24,10 @@ const files = {
     file: join(root, "shared/deck.mjs"),
     type: "text/javascript; charset=utf-8",
   },
+  "/session.mjs": {
+    file: join(root, "shared/session.mjs"),
+    type: "text/javascript; charset=utf-8",
+  },
   "/chart.js": {
     file: join(root, "node_modules/chart.js/dist/chart.umd.js"),
     type: "text/javascript; charset=utf-8",
