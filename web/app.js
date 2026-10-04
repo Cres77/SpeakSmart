@@ -4,6 +4,11 @@ const detail = document.querySelector("#coach-detail");
 const signal = document.querySelector("#coach-signal");
 const pageLink = document.querySelector("#page-link");
 const button = document.querySelector("#reconnect");
+const sensorNote = document.querySelector("#sensor-note");
+const sensorTime = document.querySelector("#sensor-time");
+const accelX = document.querySelector("#accel-x");
+const accelY = document.querySelector("#accel-y");
+const accelZ = document.querySelector("#accel-z");
 
 const labels = {
   connected: "Connected",
@@ -21,12 +26,47 @@ let desiredStatus = "connecting";
 let holdUntil = 0;
 const CONNECTING_HOLD_MS = 700;
 
+function formatAxis(value) {
+  return Number(value).toFixed(3);
+}
+
+function formatSampleTime(timestamp) {
+  if (timestamp >= 1_000_000_000_000) {
+    const date = new Date(timestamp);
+    const clock = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    const ms = String(date.getMilliseconds()).padStart(3, "0");
+    return `Sample ${clock}.${ms}`;
+  }
+  return `Sample timestamp ${timestamp}`;
+}
+
+function clearSample() {
+  accelX.textContent = "—";
+  accelY.textContent = "—";
+  accelZ.textContent = "—";
+  sensorTime.textContent = "No sample yet";
+  sensorNote.textContent = "Waiting for a sample.";
+}
+
+function renderSample(message) {
+  if (coachStatus === "disconnected" || !message.accel) return;
+  accelX.textContent = formatAxis(message.accel.x);
+  accelY.textContent = formatAxis(message.accel.y);
+  accelZ.textContent = formatAxis(message.accel.z);
+  sensorTime.textContent = formatSampleTime(message.timestamp);
+  const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
+  sensorNote.textContent = standIn
+    ? "Development stand-in. This is not a FreeWili."
+    : "Latest sample.";
+}
+
 function applyStatus(status) {
   coachStatus = status;
   label.textContent = labels[coachStatus];
   dot.dataset.status = coachStatus;
   button.setAttribute("aria-busy", coachStatus === "connecting" ? "true" : "false");
   paintSignal();
+  if (coachStatus === "disconnected") clearSample();
 }
 
 function releaseHold() {
@@ -97,6 +137,10 @@ function connectPage() {
     try {
       message = JSON.parse(event.data);
     } catch {
+      return;
+    }
+    if (message.type === "sensor") {
+      renderSample(message);
       return;
     }
     if (message.type !== "link") return;

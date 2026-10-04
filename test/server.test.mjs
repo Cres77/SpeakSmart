@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserHello, deviceHeartbeat, deviceHello, reconnectRequest } from "../shared/protocol.mjs";
+import { browserHello, deviceHeartbeat, deviceHello, deviceSensor, reconnectRequest } from "../shared/protocol.mjs";
 import { startCoachServer } from "../server/index.mjs";
 
 function waitFor(socket, predicate, timeout = 2500) {
@@ -35,7 +35,7 @@ async function browser(url) {
   return { socket, first: await first };
 }
 
-test("coach hello, heartbeat, timeout, and reserved buzz", async () => {
+test("coach hello, heartbeat, sensor, and reserved buzz", async () => {
   const app = await startCoachServer({
     port: 0,
     standIn: false,
@@ -59,6 +59,21 @@ test("coach hello, heartbeat, timeout, and reserved buzz", async () => {
     const beat = await seen;
     assert.equal(beat.status, "connected");
     assert.equal(beat.lastSeen, link.lastSeen + 10);
+
+    const sampleWait = waitFor(page.socket, (message) => message.type === "sensor");
+    coach.send(JSON.stringify(deviceSensor({
+      deviceId: "wrist-1",
+      x: 0.25,
+      y: -0.5,
+      z: 1.5,
+      timestamp: 1710000001234,
+    })));
+    const sample = await sampleWait;
+    assert.equal(sample.deviceId, "wrist-1");
+    assert.equal(sample.timestamp, 1710000001234);
+    assert.deepEqual(sample.accel, { x: 0.25, y: -0.5, z: 1.5 });
+    assert.equal(sample.movement, undefined);
+    assert.equal(sample.transport, undefined);
 
     const reserved = waitFor(page.socket, (message) => message.type === "error");
     page.socket.send(JSON.stringify({ type: "buzz", frequency: 350, duration: 150 }));

@@ -1,4 +1,4 @@
-const RESERVED = new Set(["sensor", "buzz"]);
+const RESERVED = new Set(["buzz"]);
 const DEVICE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function nowMs() {
@@ -36,6 +36,19 @@ export function reconnectRequest({ timestamp = nowMs() } = {}) {
   return { type: "reconnect", role: "browser", timestamp };
 }
 
+export function deviceSensor({ deviceId, x, y, z, g, timestamp = nowMs(), transport } = {}) {
+  const message = {
+    type: "sensor",
+    role: "device",
+    timestamp,
+    deviceId,
+    accel: { x, y, z },
+  };
+  if (g !== undefined) message.accel.g = g;
+  if (transport) message.transport = transport;
+  return message;
+}
+
 export function inspectClientMessage(message) {
   if (!message || typeof message !== "object" || Array.isArray(message)) {
     return fail("invalid", "Message must be a JSON object.");
@@ -51,6 +64,7 @@ export function inspectClientMessage(message) {
   if (type === "heartbeat") return inspectHeartbeat(message);
   if (type === "disconnect") return inspectDisconnect(message);
   if (type === "reconnect") return inspectReconnect(message);
+  if (type === "sensor") return inspectSensor(message);
   return fail("unknown", "Unknown message type.", type);
 }
 
@@ -91,6 +105,37 @@ function inspectDisconnect(message) {
     return fail("invalid", "disconnect requires a deviceId.", "disconnect");
   }
   return { ok: true, type: "disconnect", role: "device" };
+}
+
+function finiteAxis(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function inspectSensor(message) {
+  if (message.role !== "device") return fail("invalid", "sensor is sent by the coach.", "sensor");
+  if (!Number.isFinite(message.timestamp)) {
+    return fail("invalid", "sensor requires a numeric timestamp.", "sensor");
+  }
+  if (typeof message.deviceId !== "string" || !DEVICE_ID.test(message.deviceId)) {
+    return fail("invalid", "sensor requires a deviceId.", "sensor");
+  }
+  if (message.movement !== undefined) {
+    return fail("invalid", "movement is not sent until a later phase.", "sensor");
+  }
+  if (message.transport !== undefined && typeof message.transport !== "string") {
+    return fail("invalid", "transport must be a string.", "sensor");
+  }
+  const accel = message.accel;
+  if (!accel || typeof accel !== "object" || Array.isArray(accel)) {
+    return fail("invalid", "sensor requires accel x, y, and z.", "sensor");
+  }
+  if (!finiteAxis(accel.x) || !finiteAxis(accel.y) || !finiteAxis(accel.z)) {
+    return fail("invalid", "accel x, y, and z must be finite numbers.", "sensor");
+  }
+  if (accel.g !== undefined && !finiteAxis(accel.g)) {
+    return fail("invalid", "accel g must be a finite number when present.", "sensor");
+  }
+  return { ok: true, type: "sensor", role: "device" };
 }
 
 function inspectReconnect(message) {

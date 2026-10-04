@@ -1,6 +1,6 @@
 # SpeakSmart coach protocol
 
-Phase 1 uses JSON text frames on a WebSocket. One JSON object is one message. Timestamps are integer milliseconds. The coach does not send raw sample streams in this phase.
+JSON text frames on a WebSocket. One JSON object is one message. Timestamps are integer milliseconds. Phase 2 sends one accelerometer sample per `sensor` message. It does not send a movement score.
 
 The local server is the hub. The browser and the coach are both clients of that server. A development stand-in can speak the coach side so the page can be exercised without hardware. Its `transport` is `development-stand-in`. That process is not a FreeWili.
 
@@ -20,7 +20,7 @@ The local server is the hub. The browser and the coach are both clients of that 
 }
 ```
 
-`transport` is optional. Phase 1 never sends `transport: "freewili"` because no verified outbound socket exists on the device. Do not treat a missing transport as a physical FreeWili.
+`transport` is optional. The development stand-in sends `development-stand-in`. This build does not send `transport: "freewili"`. A missing transport is not a physical FreeWili.
 
 `heartbeat` — liveness while the socket stays open. Interval is `heartbeatIntervalMs` in `shared/config.json` (2000). The server marks the coach disconnected if none arrives within `heartbeatTimeoutMs` (7000).
 
@@ -46,6 +46,23 @@ The local server is the hub. The browser and the coach are both clients of that 
 ```
 
 `reason` is `shutdown` or `reconnect`.
+
+`sensor` — one accelerometer sample. Rate is `sampleRateHz` in `shared/config.json` (50). `movement` is omitted until phase 3. `g` is included only when a verified `AccelData.g` arrives with `x`, `y`, and `z`. The stand-in does not send `g`.
+
+```json
+{
+  "type": "sensor",
+  "role": "device",
+  "timestamp": 1710000000100,
+  "deviceId": "dev-stand-in",
+  "transport": "development-stand-in",
+  "accel": { "x": 0.25, "y": -0.5, "z": 1.5 }
+}
+```
+
+`transport` on this message is optional. The server forwards the transport captured at `hello`, not a later claim that the coach is a FreeWili.
+
+Units of `x`, `y`, `z`, and `g` are unknown. Do not treat the numbers as g or m/s². The stand-in's numbers are synthetic and are not `AccelData`.
 
 ### Browser → server
 
@@ -110,23 +127,15 @@ The local server is the hub. The browser and the coach are both clients of that 
 
 ## Reserved — not executed
 
-These shapes are part of the contract so later phases stay consistent. Phase 1 rejects them with `error` / `code: "reserved"`. The server does not store them, chart them, or forward `buzz` to hardware. The firmware recognizes `buzz` only so a stray frame cannot be mistaken for a sensor loop, and it does not play a tone.
+`buzz` is still rejected with `error` / `code: "reserved"`. The server does not play a tone. The firmware recognizes `buzz` only so a stray frame cannot be mistaken for a sample, and it does not play a tone.
 
-### `sensor` (coach → server), phases 2–4 and 7
+A `sensor` message that includes `movement` is rejected with `code: "invalid"`. Phase 3 owns that field.
+
+### `movement` (later, on `sensor`)
 
 ```json
-{
-  "type": "sensor",
-  "timestamp": 1710000000000,
-  "deviceId": "wrist-1",
-  "accel": { "x": 0.12, "y": 0.87, "z": 9.71 },
-  "movement": 0.72
-}
+{ "movement": 0.72 }
 ```
-
-`movement` is reserved until intensity exists (phase 3). Do not send this in phase 1, including from the stand-in.
-
-Axis units are not verified. See `firmware/hardware_freewili.c`. Later code must not assume millig, g, or m/s² until a sample frame from the device is captured.
 
 ### `buzz` (website → coach), phases 8–9
 
@@ -134,7 +143,7 @@ Axis units are not verified. See `firmware/hardware_freewili.c`. Later code must
 { "type": "buzz", "frequency": 350, "duration": 150 }
 ```
 
-`frequency` is hertz and `duration` is milliseconds. Defaults live in `shared/config.json`: 350 Hz, 150 ms, amplitude 0.2, cooldown 2000 ms. Amplitude is the fwwasm recommended level for a later call, not a measured speaker setting. Phase 1 does not play sound.
+`frequency` is hertz and `duration` is milliseconds. Defaults live in `shared/config.json`: 350 Hz, 150 ms, amplitude 0.2, cooldown 2000 ms. Amplitude is the fwwasm recommended level for a later call, not a measured speaker setting. Phase 2 does not play sound.
 
 Two verified tone APIs use different duration units. Do not mix them:
 
@@ -145,4 +154,4 @@ Neither documents a frequency range, so 300–400 Hz is expressible and not conf
 
 ## Limits
 
-Coach messages in phase 1 are hello, heartbeat, and disconnect, plus the reconnect handshake. There is no slideshow, calibration, session, or raw-sample channel. Frames larger than 4 KiB are dropped.
+Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. There is no slideshow, calibration, session store, intensity, or chart. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it.

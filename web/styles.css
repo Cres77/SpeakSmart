@@ -218,6 +218,37 @@ h2 {
   outline-offset: 3px;
 }
 
+.axes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0 8px;
+}
+
+.axes div { border-top: 1px solid var(--line); padding-top: 10px; }
+
+.axes dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+}
+
+.axes dd {
+  margin: 4px 0 0;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+#sensor-note,
+#sensor-time,
+#sensor-units {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .note { padding: 22px 28px; }
 
 .note h2 { font-size: 22px; }

@@ -47,9 +47,21 @@
             <button type="button" id="reconnect">Reconnect</button>
           </section>
 
+          <section class="card sensor" aria-labelledby="sensor-heading">
+            <h2 id="sensor-heading">Accelerometer</h2>
+            <p id="sensor-note">Waiting for a sample.</p>
+            <dl class="axes">
+              <div><dt>X</dt><dd id="accel-x">—</dd></div>
+              <div><dt>Y</dt><dd id="accel-y">—</dd></div>
+              <div><dt>Z</dt><dd id="accel-z">—</dd></div>
+            </dl>
+            <p id="sensor-time">No sample yet</p>
+            <p id="sensor-units">Units unknown. These values are not converted.</p>
+          </section>
+
           <section class="note">
             <h2>What comes next</h2>
-            <p>Motion coaching and slides come in later phases. This page only shows whether the coach link is up.</p>
+            <p>Motion coaching and slides come in later phases. This page shows the link and the latest X, Y, and Z only.</p>
           </section>
         </main>
       </div>

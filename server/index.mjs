@@ -52,11 +52,15 @@ export async function startCoachServer(options = {}) {
     };
   }
 
-  function broadcast() {
-    const payload = JSON.stringify(linkMessage());
+  function sendBrowsers(message) {
+    const payload = JSON.stringify(message);
     for (const browser of browsers) {
       if (browser.readyState === WebSocket.OPEN) browser.send(payload);
     }
+  }
+
+  function broadcast() {
+    sendBrowsers(linkMessage());
   }
 
   function setDisconnected() {
@@ -236,6 +240,24 @@ export async function startCoachServer(options = {}) {
         lastSeen = message.timestamp;
         if (status === "connected") broadcast();
         armHeartbeat();
+        return;
+      }
+
+      if (result.type === "sensor") {
+        const reading = {
+          type: "sensor",
+          role: "device",
+          timestamp: message.timestamp,
+          deviceId: message.deviceId,
+          accel: {
+            x: message.accel.x,
+            y: message.accel.y,
+            z: message.accel.z,
+          },
+        };
+        if (Number.isFinite(message.accel.g)) reading.accel.g = message.accel.g;
+        if (transport) reading.transport = transport;
+        sendBrowsers(reading);
         return;
       }
 

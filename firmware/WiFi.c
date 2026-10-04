@@ -1,5 +1,6 @@
 #include "WiFi.h"
 
+#include "Accelerometer.h"
 #include "Feedback.h"
 #include "coach_config.h"
 
@@ -18,6 +19,8 @@ static void copy_device_id(char *dst, const char *src) {
   dst[j] = '\0';
   if (j == 0) memcpy(dst, "coach", 6);
 }
+
+static void mark_down(CoachRadio *radio);
 
 static int send_json(CoachRadio *radio, const char *json) {
   int length = (int)strlen(json);
@@ -39,6 +42,38 @@ static int send_heartbeat(CoachRadio *radio, uint32_t now_ms) {
                    (unsigned long)now_ms, radio->device_id);
   if (n < 0 || n >= (int)sizeof json) return -1;
   return send_json(radio, json);
+}
+
+static int send_sensor(CoachRadio *radio, const AccelSample *sample) {
+  char json[256];
+  int n;
+  if (sample->has_g) {
+    n = snprintf(json, sizeof json,
+                 "{\"type\":\"sensor\",\"role\":\"device\",\"timestamp\":%lu,\"deviceId\":\"%s\","
+                 "\"accel\":{\"x\":%.6g,\"y\":%.6g,\"z\":%.6g,\"g\":%.6g}}",
+                 (unsigned long)sample->timestamp_ms, radio->device_id, sample->x, sample->y, sample->z, sample->g);
+  } else {
+    n = snprintf(json, sizeof json,
+                 "{\"type\":\"sensor\",\"role\":\"device\",\"timestamp\":%lu,\"deviceId\":\"%s\","
+                 "\"accel\":{\"x\":%.6g,\"y\":%.6g,\"z\":%.6g}}",
+                 (unsigned long)sample->timestamp_ms, radio->device_id, sample->x, sample->y, sample->z);
+  }
+  if (n < 0 || n >= (int)sizeof json) return -1;
+  return send_json(radio, json);
+}
+
+static void send_one_sample(CoachRadio *radio) {
+  AccelSample sample;
+  int sent;
+  if (!sensor_peek(&sample)) return;
+  sent = send_sensor(radio, &sample);
+  if (sent == 0) return;
+  if (sent < 0) {
+    radio->link.close(radio->link.ctx);
+    mark_down(radio);
+    return;
+  }
+  sensor_commit();
 }
 
 static int send_disconnect(CoachRadio *radio, uint32_t now_ms, const char *reason) {
@@ -151,6 +186,9 @@ void coach_radio_poll(CoachRadio *radio, uint32_t now_ms) {
     handle_frame(radio, incoming, now_ms);
     if (radio->status != COACH_LINK_CONNECTED) return;
   }
+
+  send_one_sample(radio);
+  if (radio->status != COACH_LINK_CONNECTED) return;
 
   if ((uint32_t)(now_ms - radio->last_tx_ms) < (uint32_t)COACH_HEARTBEAT_INTERVAL_MS) return;
   sent = send_heartbeat(radio, now_ms);

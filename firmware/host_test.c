@@ -149,6 +149,59 @@ int main(void) {
   assert(fake.sent_count == sent_after);
   assert(sensor_task_polls() > polls_before);
 
+  sensor_test_reset();
+  FakeLink samples = {0};
+  CoachRadio sampler;
+  HardwareAccelSample unread = {9, 9, 9, 1, 9};
+  AccelSample peeked;
+  coach_radio_init(&sampler, "host-test", ops(&samples));
+  assert(hardware_accel_poll(&unread) == HARDWARE_NO_SAMPLE);
+  assert(unread.x == 9 && unread.y == 9 && unread.z == 9);
+
+  for (int i = 0; i < 20; i += 1) {
+    sensor_test_offer((float)i, 0.25f, -3.0f, 1000u + (uint32_t)i);
+    freewili_main_poll(&sampler, (uint32_t)i * 20u);
+  }
+  assert(sampler.status == COACH_LINK_DISCONNECTED);
+  assert(samples.sent_count == 0);
+  assert(sensor_queue_count() == 8);
+  assert(sensor_peek(&peeked) == 1);
+  assert(peeked.x == 12.f);
+
+  coach_radio_request_connect(&sampler, 0);
+  freewili_main_poll(&sampler, 400);
+  assert(sampler.status == COACH_LINK_CONNECTED);
+  assert(strstr(samples.sent[0], "\"type\":\"hello\"") != NULL);
+  assert(strstr(samples.sent[0], "freewili") == NULL);
+
+  for (int i = 0; i < 8; i += 1) freewili_main_poll(&sampler, 500u + (uint32_t)i);
+  assert(sensor_queue_count() == 0);
+  assert(samples.sent_count == 9);
+  assert(strstr(samples.sent[1], "\"type\":\"sensor\"") != NULL);
+  assert(strstr(samples.sent[1], "\"x\":12") != NULL);
+  assert(strstr(samples.sent[8], "\"x\":19") != NULL);
+  for (int i = 1; i < 9; i += 1) {
+    assert(strstr(samples.sent[i], "movement") == NULL);
+    assert(strstr(samples.sent[i], "freewili") == NULL);
+    assert(strstr(samples.sent[i], "\"deviceId\":\"host-test\"") != NULL);
+  }
+  int drained = samples.sent_count;
+  freewili_main_poll(&sampler, 600);
+  assert(samples.sent_count == drained);
+
+  sensor_test_offer(4.5f, 5.5f, 6.5f, 42);
+  samples.block_sends = 1;
+  polls_before = sensor_task_polls();
+  freewili_main_poll(&sampler, 1000);
+  assert(sensor_task_polls() == polls_before + 1);
+  assert(samples.sent_count == drained);
+  assert(sensor_queue_count() == 1);
+  freewili_main_poll(&sampler, 1020);
+  assert(samples.sent_count == drained + 1);
+  assert(strstr(samples.sent[samples.sent_count - 1], "\"x\":4.5") != NULL);
+  assert(strstr(samples.sent[samples.sent_count - 1], "freewili") == NULL);
+  assert(sensor_queue_count() == 0);
+
   puts("firmware phase 1 ok");
   return 0;
 }

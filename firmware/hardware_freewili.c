@@ -40,24 +40,39 @@
  * Public prose describes that server as a terminal bridge (port 8765 in the
  * Bottlenose guide). Do not assume it accepts this project's JSON frames.
  *
- * VERIFIED accelerometer entry points for later phases, not called, and no
- * sample is invented here:
- *   WASM setSensorSettings(bStreamAccel, bStreamTemp, iRateMilliseconds, ...)
- *   event FWGUI_EVENT_GUI_SENSOR_DATA
- *   Host library FreeWili.enable_accel_events(enable, interval_ms=None,
- *     processor=FreeWiliProcessorType.Display) -> Ok[str] | Err[str]
- *   AccelData fields: g, x, y, z, temp_c, temp_f
+ * Accelerometer. hardware_accel_poll is the only read entry. It does not
+ * invent samples and does not convert units.
+ *
+ * fwwasm.h (https://raw.githubusercontent.com/freewili/fwwasm/master/include/fwwasm.h)
+ * declares the event and the stream call, and does not define a payload struct:
+ *   #define FW_GET_EVENT_DATA_MAX 34
+ *   int getEventData(unsigned char* data);  // returns FWGuiEventType
+ *   int hasEvent(void);
+ *   FWGUI_EVENT_GUI_SENSOR_DATA is an enumerator in FWGuiEventType
+ *   void setSensorSettings(int bStreamAccel, int bStreamTemp,
+ *     int iRateMilliseconds, int bEnableAccelXPlotData, int iAccelXPlotDataIndex,
+ *     int bEnableAccelYPlotData, int iAccelYPlotDataIndex,
+ *     int bEnableAccelZPlotData, int iAccelZPlotDataIndex,
+ *     int bEnableTempPlotDataC, int iTempPlotDataIndexC,
+ *     int bEnableTempPlotDataF, int iTempPlotDataIndexF);
+ * Those functions are not called. There is no struct to quote for the bytes
+ * behind getEventData, so this file does not assign field offsets.
+ *
+ * The host Python library documents named fields and is not linked into this
+ * C binary, so it is not called from here either:
+ *   class AccelData(g: float, x: float, y: float, z: float, temp_c: float, temp_f: float)
+ *   FreeWili.enable_accel_events(enable, interval_ms=None,
+ *     processor=FreeWiliProcessorType.Display)
  *   https://freewili.github.io/freewili-python/api/types.html
- *   OneWili dev.io.sensors.enable_motion_stream(stream_rate_ms: int) -> Result
- *     "Streams accelerometer and gyroscope data to the host" over USB.
- *     0 stops the stream. The numeric layout of a sample is not documented.
- *   dev.io.sensors.get_sensors() -> Result
- *   dev.hardware.settings_home.sensor_settings.accel_range(value: int) -> Result
- * LIS3DH and axis directions (X toward the IO connector, Y toward the buttons,
- * Z out of the screen) are documented for the GUI scripting guide:
- *   https://github.com/freewili/FreeWili_WebDocs/blob/main/docs/scripting/gui-screen-buttons-and-lights/accelerometer.md
- * Units of x/y/z are not stated. FREE-WILi 2's motion part number was not
- * confirmed from a source file in this pass.
+ * Unit of x, y, z, and g: unknown. Do not scale them.
+ *
+ * Not called, and not parsed:
+ *   dev.io.sensors.enable_motion_stream(stream_rate_ms: int) -> Result
+ *   USB host stream of accelerometer and gyroscope. 0 stops it.
+ *   The numeric frame is not documented.
+ * LIS3DH axis directions are in the GUI scripting guide (X toward the IO
+ * connector, Y toward the buttons, Z out of the screen). That page does not
+ * state the unit. FREE-WILi 2's motion part number was not confirmed here.
  *
  * VERIFIED speaker entry points for a later buzz, not called. No separate
  * buzzer API was found. A 350 Hz / 150 ms tone is expressible and was not
@@ -89,4 +104,13 @@ HardwareResult hardware_wifi_join(const char *ssid, const char *password) {
   (void)ssid;
   (void)password;
   return HARDWARE_API_UNVERIFIED;
+}
+
+HardwareResult hardware_accel_poll(HardwareAccelSample *sample) {
+  (void)sample;
+  /* No verified payload struct is available in this C binary.
+   * setSensorSettings, getEventData, enable_accel_events, and
+   * enable_motion_stream are intentionally not called.
+   */
+  return HARDWARE_NO_SAMPLE;
 }
