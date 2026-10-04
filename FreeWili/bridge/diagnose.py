@@ -18,7 +18,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from freewili_usb import (  # noqa: E402
-    INSTALL_COMMAND,
     LISTEN_NOTE,
     ONEWILI_COMMIT,
     LibraryMissing,
@@ -27,6 +26,7 @@ from freewili_usb import (  # noqa: E402
     motion_axes,
     onewili_of,
     open_usb,
+    python_requirement_message,
 )
 
 LISTEN_SECONDS = 5
@@ -141,13 +141,8 @@ def _status(result):
 
 
 def main():
-    if sys.version_info < (3, 10):
-        print(
-            "Python 3.10 or newer is required to open the FreeWili over USB.\n"
-            "Install Python, then run:\n"
-            f"  {INSTALL_COMMAND}",
-            flush=True,
-        )
+    if sys.version_info < (3, 11):
+        print(python_requirement_message(), flush=True)
         raise SystemExit(2)
     import os
 

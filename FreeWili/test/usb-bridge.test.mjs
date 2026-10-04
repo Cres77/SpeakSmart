@@ -3,7 +3,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { browserHello } from "../shared/protocol.mjs";
+import { resolvePython } from "../shared/python.mjs";
 import { startCoachServer } from "../server/index.mjs";
+
+const python = resolvePython();
 
 function waitFor(socket, predicate, timeout = 3000) {
   return new Promise((resolve, reject) => {
@@ -30,7 +33,8 @@ function opened(socket) {
 }
 
 test("usb serial matching does not need a board", () => {
-  const result = spawnSync("python3", ["test/usb_bridge_test.py"], {
+  assert.ok(python, "Python 3.11 or newer is required for the bridge tests");
+  const result = spawnSync(python.command, [...python.args, "test/usb_bridge_test.py"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
     encoding: "utf8",
@@ -40,7 +44,8 @@ test("usb serial matching does not need a board", () => {
 
 test("a hello for serial FW4923 is labeled freewili and a 350 mg line is 0.35 g", async () => {
   const app = await startCoachServer({ port: 0, standIn: false });
-  const child = spawn("python3", ["-c", bridgeScript(app.port)], {
+  assert.ok(python, "Python 3.11 or newer is required for the bridge tests");
+  const child = spawn(python.command, [...python.args, "-c", bridgeScript(app.port)], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
     stdio: ["ignore", "pipe", "pipe"],

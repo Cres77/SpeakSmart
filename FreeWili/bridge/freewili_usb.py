@@ -38,6 +38,7 @@ Line numbers below are that commit's python/onewili tree.
 
 import math
 import queue
+import sys
 import threading
 import time
 
@@ -50,15 +51,44 @@ NAMED_USB_IDS = (FTDI_ID, MAIN_CDC_ID, DISPLAY_CDC_ID)
 # Espressif USB JTAG/serial debug unit. Not a FreeWili.
 ESPRESSIF_DEBUG_ID = (0x303A, 0x1001)
 LISTEN_NOTE = "Listen for the tone."
-INSTALL_COMMAND = "python3 -m pip install -r bridge/requirements.txt"
 # set_zone and tone each wait up to Transport.DEFAULT_TIMEOUT (5 s).
 COMMAND_WAIT_SEC = 12
+
+
+def install_command(platform=None):
+    """pip line for this OS. Windows uses the py launcher and a backslash path."""
+    if (platform or sys.platform) == "win32":
+        return "py -m pip install -r bridge\\requirements.txt"
+    return "python3 -m pip install -r bridge/requirements.txt"
+
+
+INSTALL_COMMAND = install_command()
+
+
+def python_requirement_message(platform=None):
+    """Text when Python 3.11+ is missing. OneWili installs from a git URL."""
+    plat = platform or sys.platform
+    if plat == "win32":
+        setup = (
+            "Install 64-bit Python 3.11 or newer from python.org, with "
+            '"Add python.exe to PATH" checked. Git is required, because '
+            "OneWili installs from a git URL."
+        )
+    else:
+        setup = "Git is required, because OneWili installs from a git URL."
+    return (
+        "Python 3.11 or newer is required to open the FreeWili over USB.\n"
+        f"{setup}\n"
+        "Then run:\n"
+        f"  {install_command(plat)}"
+    )
 
 
 class LibraryMissing(Exception):
     def __init__(self):
         super().__init__(
             "The onewili package is not installed, so this process cannot open a FreeWili.\n"
+            "Git is required, because OneWili installs from a git URL.\n"
             "Install it with:\n"
             f"  {INSTALL_COMMAND}"
         )
@@ -175,7 +205,10 @@ def describe_missing(devices, serial):
 
 
 def port_path(usb):
-    """Same attribute order as OneWili._port_path (__init__.py:82-87)."""
+    """Same attribute order as OneWili._port_path (__init__.py:82-87).
+
+    The result is the finder string as reported, including a Windows COM name.
+    """
     for attr in ("port", "path", "port_name", "location"):
         value = getattr(usb, attr, None)
         if value:

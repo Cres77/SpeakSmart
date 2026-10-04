@@ -1,5 +1,7 @@
 # SpeakSmart coach
 
+On Windows, double-click `start-windows.bat`. It checks for Node.js 20 or newer, 64-bit Python 3.11 or newer, and Git, installs any that are missing, then starts the coach and opens the page. Double-click `diagnose-windows.bat` for that same setup and then the USB check.
+
 The coach page shows Connected, Connecting, or Disconnected, the latest accelerometer X, Y, and Z, a movement intensity, and the last minute of that intensity. It also shows Still, Gesturing, or Excessive since the latest coach hello, with gesture and excessive counts and a stillness percent. Reconnect asks the coach to join again. Presentation holds slide decks in this browser.
 
 `presage/` at the repository root is an existing webcam metrics proof of concept. It is separate from this coach and still runs on its own.
@@ -18,7 +20,7 @@ Open http://127.0.0.1:4173/
 
 `npm start` launches a USB bridge. It uses OneWili from git, pinned in `bridge/requirements.txt`, not freewili-python. One plugged-in FreeWili is used. Leave `FREEWILI_SERIAL` empty for that board. Set `FREEWILI_SERIAL` when more than one board is plugged in. The bridge opens only the Main CDC port `0x093C:0x2054` with `OneWili(port).open()`. It does not open the Display port and it does not open the Espressif debug port `0x303a:0x1001`. Accelerometer samples are g. The bridge divides OneWili `*motion` milli-g by 1000 before the sensor frame. Stand-in samples stay unitless, and the page labels them as the stand-in. A buzz while that stream is running can drop a few queued samples. The page stays Disconnected until that port opens. The bridge then sends `transport: "freewili"` and `deviceId` set to the serial. If several boards are present and no serial is set, the process prints those serials and does not send that transport.
 
-Python 3.10+ and the package are required:
+Python 3.11+ and Git are required. OneWili installs from a git URL. On Windows the coach tries `py -3`, then `python`, and skips the Microsoft Store alias. Elsewhere it tries `python3`, then `python`. Set `SPEAKSMART_PYTHON` to one executable path to override that search.
 
 ```bash
 cd FreeWili
@@ -26,7 +28,7 @@ python3 -m pip install -r bridge/requirements.txt
 npm start
 ```
 
-If Python or OneWili is missing, `npm start` prints that install command. OneWili takes no IP address, so `FREEWILI_HOST` is unused and the bridge stays on USB.
+If Python or OneWili is missing, `npm start` prints the install command for that platform. OneWili takes no IP address, so `FREEWILI_HOST` is unused and the bridge stays on USB.
 
 `npm run diagnose` opens that same Main port. OneWili at the pinned commit does not expose a firmware version, so the script says so and prints the USB product name when the finder has one. It turns on the sensor zone, streams motion for 5 seconds, prints the sample count and a few g values, then plays a 350 Hz, 150 ms tone and asks you to listen. It does not report that a tone was heard.
 
@@ -43,6 +45,18 @@ SPEAKSMART_STANDIN=1 npm start
 ```
 
 The server listens on all interfaces, port 4173 (`SPEAKSMART_PORT` overrides it). The bridge and the stand-in use localhost.
+
+## Windows
+
+Double-click `start-windows.bat` in `FreeWili\`. The window changes to that folder, then checks Node.js, Python, and Git. Anything missing is installed with winget:
+
+- `OpenJS.NodeJS.LTS`
+- `Python.Python.3.12` (64-bit Python 3.12, which satisfies 3.11+)
+- `Git.Git`
+
+The script then refreshes PATH from the Machine and User registry values, runs `py -3 -m pip install -r bridge\requirements.txt` with the Python it found, runs `npm install`, and runs `npm start`. When http://127.0.0.1:4173/ is listening, the page opens in the default browser. If a step fails, the window stays open so you can read the message. If winget itself is missing, the window prints the Node.js, Python, and Git download pages and waits.
+
+`diagnose-windows.bat` runs those same checks and then `npm run diagnose`.
 
 ## Tests
 
