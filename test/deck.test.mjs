@@ -73,5 +73,26 @@ test("a saved library round-trips and drops a bad payload", () => {
   assert.equal(DECK_STORAGE_KEY, "speaksmart.decks");
   assert.equal(library.activeId, deck.id);
   assert.equal(library.decks[0].slides[0].title, "Keep");
+  assert.equal(library.decks[0].slides[0].cue, "");
   assert.deepEqual(readLibrary("not json"), { activeId: null, decks: [] });
+});
+
+test("an old slide without a cue loads empty and the editor can set or clear it", () => {
+  const library = readLibrary(JSON.stringify({
+    activeId: "deck-1",
+    decks: [{
+      id: "deck-1",
+      name: "Old",
+      index: 0,
+      slides: [{ id: "slide-1", title: "Hello", content: "Body" }],
+    }],
+  }));
+  assert.equal(library.decks[0].slides[0].cue, "");
+  let deck = editSlide(library.decks[0], "slide-1", { cue: "Slow down hand movements" });
+  assert.equal(deck.slides[0].cue, "Slow down hand movements");
+  assert.equal(deck.slides[0].title, "Hello");
+  assert.equal(deck.slides[0].content, "Body");
+  deck = editSlide(deck, "slide-1", { cue: "" });
+  assert.equal(deck.slides[0].cue, "");
+  assert.equal(deck.slides[0].title, "Hello");
 });

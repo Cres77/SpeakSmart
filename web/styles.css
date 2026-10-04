@@ -562,6 +562,11 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.stage-cue {
+  margin-top: 28px;
+  max-width: 40rem;
+}
+
 #stage-title:empty::before {
   content: "Untitled slide";
   color: var(--muted);

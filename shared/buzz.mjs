@@ -13,6 +13,7 @@ export function readBuzzSettings(raw, defaults) {
     amplitude: defaults.amplitude,
     automatic: defaults.automatic === true,
     cooldown: Number.isFinite(defaults.cooldown) ? defaults.cooldown : 3000,
+    cueBuzz: defaults.cueBuzz === true,
   };
   let parsed = raw;
   if (typeof raw === "string") {
@@ -29,6 +30,7 @@ export function readBuzzSettings(raw, defaults) {
     amplitude: Number.isFinite(parsed.amplitude) ? parsed.amplitude : fallback.amplitude,
     automatic: parsed.automatic === true,
     cooldown: Number.isFinite(parsed.cooldown) ? parsed.cooldown : fallback.cooldown,
+    cueBuzz: parsed.cueBuzz === true,
   };
 }
 
@@ -70,6 +72,34 @@ export function createAutomaticFeedback() {
         amplitude: settings.amplitude,
         timestamp: now,
         reason: "excessive",
+        played: false,
+      };
+    },
+  };
+}
+
+export function createSlideCues() {
+  let shownId = null;
+  return {
+    reset() {
+      shownId = null;
+    },
+    enter(slide, settings, now, guard) {
+      const id = slide && typeof slide.id === "string" ? slide.id : null;
+      if (id === shownId) return null;
+      shownId = id;
+      const cue = typeof slide?.cue === "string" ? slide.cue.trim() : "";
+      if (!cue || !settings || settings.cueBuzz !== true) return null;
+      if (!Number.isFinite(now)) return null;
+      if (guard && !guard.trySend(now, settings.duration)) return null;
+      return {
+        frequency: settings.frequency,
+        duration: settings.duration,
+        amplitude: settings.amplitude,
+        timestamp: now,
+        reason: "cue",
+        slideTitle: typeof slide.title === "string" ? slide.title : "",
+        cue,
         played: false,
       };
     },

@@ -54,4 +54,6 @@ A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page c
 
 A resting pose can be saved in this browser under `speaksmart.calibration`. The server uses that vector as the movement baseline. Clearing it restores the first-sample baseline. Automatic feedback stays off unless the setting is on.
 
+A slide can store an optional cue. Presentation shows that text under the slide. Settings can buzz once when that slide is entered. The checkbox is off by default, under `speaksmart.buzz`. The acknowledgement stays `played: false`.
+
 Thresholds live in `shared/config.json`: sample rate, movement, gesture magnitude and timing, stillness, excessive level and timing, buzz cooldown, frequency, duration, and amplitude, and calibration duration. The page reads that file. Firmware does not apply it.

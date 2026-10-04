@@ -2,7 +2,7 @@
  * The page stores them in localStorage under SESSION_STORAGE_KEY.
  * gestures and excessive hold events the motion rules recorded during that practice.
  * buzzes holds buzz commands sent during that practice.
- * reason is "manual" or "excessive". played stays false.
+ * reason is "manual", "excessive", or "cue". played stays false.
  */
 
 import { CHART_BUCKET_MS } from "./intensity-series.mjs";
@@ -26,8 +26,8 @@ function buzzEvent(event) {
     return null;
   }
   const reason = event.reason == null ? "manual" : event.reason;
-  if (reason !== "manual" && reason !== "excessive") return null;
-  return {
+  if (reason !== "manual" && reason !== "excessive" && reason !== "cue") return null;
+  const stored = {
     timestamp: event.timestamp,
     frequency: event.frequency,
     duration: event.duration,
@@ -35,6 +35,11 @@ function buzzEvent(event) {
     reason,
     played: false,
   };
+  if (reason === "cue") {
+    stored.slideTitle = typeof event.slideTitle === "string" ? event.slideTitle : "";
+    stored.cue = typeof event.cue === "string" ? event.cue : "";
+  }
+  return stored;
 }
 
 function transition(change) {
@@ -138,14 +143,22 @@ export function stopSession(session, stoppedAt) {
     transitions: session.transitions,
     gestures: session.gestures.map((event) => ({ timestamp: event.timestamp, magnitude: event.magnitude })),
     excessive: session.excessive.map((event) => ({ timestamp: event.timestamp, movement: event.movement })),
-    buzzes: session.buzzes.map((event) => ({
-      timestamp: event.timestamp,
-      frequency: event.frequency,
-      duration: event.duration,
-      amplitude: event.amplitude,
-      reason: event.reason === "excessive" ? "excessive" : "manual",
-      played: false,
-    })),
+    buzzes: session.buzzes.map((event) => {
+      const reason = event.reason === "excessive" ? "excessive" : event.reason === "cue" ? "cue" : "manual";
+      const stored = {
+        timestamp: event.timestamp,
+        frequency: event.frequency,
+        duration: event.duration,
+        amplitude: event.amplitude,
+        reason,
+        played: false,
+      };
+      if (reason === "cue") {
+        stored.slideTitle = typeof event.slideTitle === "string" ? event.slideTitle : "";
+        stored.cue = typeof event.cue === "string" ? event.cue : "";
+      }
+      return stored;
+    }),
   };
 }
 

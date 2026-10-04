@@ -9,7 +9,7 @@ function makeId() {
 }
 
 function blankSlide() {
-  return { id: makeId(), title: "", content: "" };
+  return { id: makeId(), title: "", content: "", cue: "" };
 }
 
 function asText(value) {
@@ -43,6 +43,7 @@ export function editSlide(deck, slideId, fields) {
       ...slide,
       title: fields.title === undefined ? slide.title : asText(fields.title),
       content: fields.content === undefined ? slide.content : asText(fields.content),
+      cue: fields.cue === undefined ? asText(slide.cue) : asText(fields.cue),
     };
   });
   return { ...deck, slides };
@@ -85,6 +86,7 @@ function normalizeDeck(deck) {
       id: slide.id,
       title: asText(slide.title),
       content: asText(slide.content),
+      cue: asText(slide.cue),
     }));
   let index = Number.isInteger(deck.index) ? deck.index : 0;
   if (slides.length === 0) index = 0;

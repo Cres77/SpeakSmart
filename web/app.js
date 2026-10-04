@@ -11,7 +11,7 @@ import {
   slidePosition,
 } from "/deck.mjs";
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
-import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, readBuzzSettings } from "/buzz.mjs";
+import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, createSlideCues, readBuzzSettings } from "/buzz.mjs";
 import { createMotionDetector } from "/motion.mjs";
 import { CALIBRATION_STORAGE_KEY, readCalibration, restingPose } from "/calibration.mjs";
 import { summarizeSession } from "/summary.mjs";
@@ -37,6 +37,7 @@ const buzzSend = document.querySelector("#buzz-send");
 const buzzNote = document.querySelector("#buzz-note");
 const buzzGuard = createBuzzGuard();
 const automaticFeedback = createAutomaticFeedback();
+const slideCues = createSlideCues();
 let lastBuzzReason = "manual";
 const sensorNote = document.querySelector("#sensor-note");
 const calibrateButton = document.querySelector("#calibrate");
@@ -418,7 +419,9 @@ function connectPage() {
     if (message.type === "buzz") {
       setBuzzNote(lastBuzzReason === "excessive"
         ? "Excessive movement detected. No tone was played."
-        : "Command sent. No tone was played.");
+        : lastBuzzReason === "cue"
+          ? "Cue sent. No tone was played."
+          : "Command sent. No tone was played.");
       return;
     }
     if (message.type === "error" && message.for === "buzz") {
@@ -471,12 +474,14 @@ fetch("/config.json")
       amplitude: loaded.buzzAmplitude,
       automatic: false,
       cooldown: loaded.buzzCooldownMs,
+      cueBuzz: false,
     });
     buzzFrequency.value = String(stored.frequency);
     buzzDuration.value = String(stored.duration);
     buzzAmplitude.value = String(stored.amplitude);
     buzzAutomatic.checked = stored.automatic === true;
     buzzCooldown.value = String(stored.cooldown);
+    buzzCue.checked = stored.cueBuzz === true;
     if (Number.isFinite(loaded.calibrationDurationMs)) calibrationDurationMs = loaded.calibrationDurationMs;
   })
   .catch(() => {});
@@ -497,6 +502,7 @@ const buzzFrequency = document.querySelector("#buzz-frequency");
 const buzzDuration = document.querySelector("#buzz-duration");
 const buzzAmplitude = document.querySelector("#buzz-amplitude");
 const buzzAutomatic = document.querySelector("#buzz-automatic");
+const buzzCue = document.querySelector("#buzz-cue");
 const buzzCooldown = document.querySelector("#buzz-cooldown");
 const buzzTest = document.querySelector("#buzz-test");
 const settingsBuzzNote = document.querySelector("#settings-buzz-note");
@@ -507,6 +513,7 @@ const deckEditor = document.querySelector("#deck-editor");
 const deckTitle = document.querySelector("#deck-title");
 const slideCount = document.querySelector("#slide-count");
 const slideTitle = document.querySelector("#slide-title");
+const slideCue = document.querySelector("#slide-cue");
 const slideBody = document.querySelector("#slide-body");
 const slidePrev = document.querySelector("#slide-prev");
 const slideNext = document.querySelector("#slide-next");
@@ -519,6 +526,7 @@ const stageNext = document.querySelector("#stage-next");
 const stageCount = document.querySelector("#stage-count");
 const stageTitle = document.querySelector("#stage-title");
 const stageBody = document.querySelector("#stage-body");
+const stageCue = document.querySelector("#stage-cue");
 const stageTimer = document.querySelector("#stage-timer");
 
 let library = readLibrary(localStorage.getItem(DECK_STORAGE_KEY));
@@ -569,10 +577,12 @@ function renderDecks() {
   shownSlideId = slide?.id ?? null;
   if (slideChanged || document.activeElement !== slideTitle) slideTitle.value = slide?.title ?? "";
   if (slideChanged || document.activeElement !== slideBody) slideBody.value = slide?.content ?? "";
+  if (slideChanged || document.activeElement !== slideCue) slideCue.value = slide?.cue ?? "";
   const atStart = !slide || deck.index <= 0;
   const atEnd = !slide || deck.index >= deck.slides.length - 1;
   slideTitle.disabled = !slide;
   slideBody.disabled = !slide;
+  slideCue.disabled = !slide;
   slideDelete.disabled = !slide;
   presentStart.disabled = !slide;
   slidePrev.disabled = atStart;
@@ -582,6 +592,10 @@ function renderDecks() {
   stageCount.textContent = slidePosition(deck);
   stageTitle.textContent = slide?.title ?? "";
   stageBody.textContent = slide?.content ?? "";
+  const cueText = typeof slide?.cue === "string" ? slide.cue.trim() : "";
+  stageCue.textContent = cueText;
+  stageCue.hidden = cueText.length === 0;
+  if (presenting && slideChanged) considerCue(slide);
 }
 
 function setBuzzNote(text) {
@@ -596,7 +610,36 @@ function currentBuzzSettings() {
     amplitude: Number(buzzAmplitude.value),
     automatic: buzzAutomatic.checked === true,
     cooldown: Number(buzzCooldown.value),
+    cueBuzz: buzzCue.checked === true,
   };
+}
+
+function considerCue(slide) {
+  const settings = currentBuzzSettings();
+  const cue = typeof slide?.cue === "string" ? slide.cue.trim() : "";
+  const problem = buzzCommandError(settings);
+  const ready = cue.length > 0
+    && settings.cueBuzz === true
+    && !problem
+    && socket
+    && socket.readyState === WebSocket.OPEN;
+  const command = slideCues.enter(
+    slide,
+    ready ? settings : { ...settings, cueBuzz: false },
+    Date.now(),
+    ready ? buzzGuard : null,
+  );
+  if (!command) return;
+  lastBuzzReason = "cue";
+  if (practiceSession) practiceSession = recordBuzz(practiceSession, command);
+  socket.send(JSON.stringify({
+    type: "buzz",
+    role: "browser",
+    frequency: command.frequency,
+    duration: command.duration,
+    amplitude: command.amplitude,
+    timestamp: command.timestamp,
+  }));
 }
 
 function considerAutomatic(event) {
@@ -730,6 +773,8 @@ function startPresentation() {
   presentationTimer = setInterval(() => {
     stageTimer.textContent = formatElapsed(Date.now() - runStarted);
   }, 200);
+  slideCues.reset();
+  shownSlideId = null;
   showStage();
 }
 
@@ -738,6 +783,7 @@ function endPresentation() {
   presenting = false;
   clearInterval(presentationTimer);
   presentationTimer = null;
+  slideCues.reset();
 }
 
 function step(direction) {
@@ -783,6 +829,11 @@ slideBody.addEventListener("input", () => {
   const deck = activeDeck();
   const slide = deck?.slides[deck.index];
   if (slide) replaceDeck(editSlide(deck, slide.id, { content: slideBody.value }));
+});
+slideCue.addEventListener("input", () => {
+  const deck = activeDeck();
+  const slide = deck?.slides[deck.index];
+  if (slide) replaceDeck(editSlide(deck, slide.id, { cue: slideCue.value }));
 });
 slideAdd.addEventListener("click", () => {
   const deck = activeDeck();
@@ -1045,8 +1096,9 @@ function openSession(id) {
     return `${formatWhen(event.timestamp)} · movement ${Math.round(event.movement * 100)}%`;
   });
   fillEventList(sessionBuzzes, session.buzzes, "No buzzes.", (event) => {
-    const reason = event.reason === "excessive" ? "excessive" : "manual";
-    return `${formatWhen(event.timestamp)} · ${event.frequency} Hz · ${event.duration} ms · amplitude ${event.amplitude} · ${reason} · not played`;
+    const reason = event.reason === "excessive" ? "excessive" : event.reason === "cue" ? "cue" : "manual";
+    const detail = reason === "cue" ? ` · ${event.slideTitle || "Untitled slide"} · ${event.cue}` : "";
+    return `${formatWhen(event.timestamp)} · ${event.frequency} Hz · ${event.duration} ms · amplitude ${event.amplitude} · ${reason}${detail} · not played`;
   });
   sessionChart = paintStoredChart(sessionChart, sessionChartCanvas, session);
   requestAnimationFrame(() => sessionChart?.resize());
@@ -1127,6 +1179,7 @@ for (const field of [buzzFrequency, buzzDuration, buzzAmplitude, buzzCooldown]) 
   field.addEventListener("change", saveBuzzForm);
 }
 buzzAutomatic.addEventListener("change", saveBuzzForm);
+buzzCue.addEventListener("change", saveBuzzForm);
 practiceStart.addEventListener("click", beginPractice);
 practiceStop.addEventListener("click", finishPractice);
 sessionBack.addEventListener("click", () => {

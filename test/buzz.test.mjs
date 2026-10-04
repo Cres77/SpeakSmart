@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, readBuzzSettings } from "../shared/buzz.mjs";
+import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, createSlideCues, readBuzzSettings } from "../shared/buzz.mjs";
 import { config } from "../shared/config.mjs";
 import { createMotionDetector } from "../shared/motion.mjs";
 import { inspectClientMessage } from "../shared/protocol.mjs";
@@ -11,6 +11,7 @@ const buzzDefaults = {
   amplitude: config.buzzAmplitude,
   automatic: false,
   cooldown: config.buzzCooldownMs,
+  cueBuzz: false,
 };
 
 function excessiveDetector() {
@@ -56,7 +57,10 @@ test("buzz defaults match shared config and stay separate from decks and session
     amplitude: 0.3,
     automatic: false,
     cooldown: 3000,
+    cueBuzz: false,
   });
+  assert.equal(readBuzzSettings(JSON.stringify({ cueBuzz: true }), buzzDefaults).cueBuzz, true);
+  assert.equal(readBuzzSettings(JSON.stringify({ cueBuzz: "true" }), buzzDefaults).cueBuzz, false);
   assert.equal(readBuzzSettings(JSON.stringify({ automatic: true, cooldown: 8000 }), buzzDefaults).automatic, true);
   assert.equal(readBuzzSettings(JSON.stringify({ automatic: "true" }), buzzDefaults).automatic, false);
   assert.equal(readBuzzSettings("{", buzzDefaults).frequency, 350);
@@ -141,4 +145,60 @@ test("a pulse still running blocks an automatic buzz without starting its cooldo
   assert.equal(sent.played, false);
   assert.equal(sent.reason, "excessive");
   assert.equal(sent.frequency, 350);
+});
+
+test("a slide cue sends one buzz on entry only when the checkbox is on", () => {
+  const settingsOn = { ...buzzDefaults, frequency: 440, duration: 200, amplitude: 0.3, cueBuzz: true };
+  const settingsOff = { ...settingsOn, cueBuzz: false };
+  const empty = { id: "quiet", title: "Quiet", cue: "" };
+  const slide = { id: "opening", title: "Opening", cue: "  Slow down hand movements  " };
+  const guard = createBuzzGuard();
+  const cues = createSlideCues();
+
+  assert.equal(cues.enter(empty, settingsOn, 1000, guard), null);
+  cues.reset();
+  assert.equal(cues.enter(slide, settingsOff, 1000, guard), null);
+
+  cues.reset();
+  const sent = cues.enter(slide, settingsOn, 1000, guard);
+  assert.deepEqual(sent, {
+    frequency: 440,
+    duration: 200,
+    amplitude: 0.3,
+    timestamp: 1000,
+    reason: "cue",
+    slideTitle: "Opening",
+    cue: "Slow down hand movements",
+    played: false,
+  });
+  assert.equal(cues.enter(slide, settingsOn, 1100, guard), null);
+  assert.equal(sent.played, false);
+
+  const away = cues.enter({ id: "next", title: "Next", cue: "" }, settingsOn, 2000, guard);
+  assert.equal(away, null);
+  const again = cues.enter(slide, settingsOn, 2000, guard);
+  assert.equal(again.reason, "cue");
+  assert.equal(again.played, false);
+  assert.equal(again.cue, "Slow down hand movements");
+
+  const ack = inspectClientMessage({
+    type: "buzz",
+    role: "device",
+    frequency: sent.frequency,
+    duration: sent.duration,
+    amplitude: sent.amplitude,
+    played: false,
+    timestamp: sent.timestamp,
+  });
+  assert.equal(ack.ok, true);
+});
+
+test("a blocked cue pulse is not retried while that slide stays up", () => {
+  const guard = createBuzzGuard();
+  assert.equal(guard.trySend(1000, 150), true);
+  const cues = createSlideCues();
+  const slide = { id: "opening", title: "Opening", cue: "Slow down hand movements" };
+  const settings = { ...buzzDefaults, cueBuzz: true };
+  assert.equal(cues.enter(slide, settings, 1100, guard), null);
+  assert.equal(cues.enter(slide, settings, 2000, guard), null);
 });

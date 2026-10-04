@@ -181,3 +181,41 @@ test("a manual buzz sent during practice is stored as not played", () => {
   assert.equal(withReason.buzzes[1].reason, "excessive");
   assert.equal(withReason.buzzes[1].played, false);
 });
+
+test("a cue buzz stored during practice keeps the slide and stays not played", () => {
+  let session = startSession({ startedAt });
+  session = recordBuzz(session, {
+    timestamp: startedAt + 40,
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    reason: "cue",
+    slideTitle: "Opening",
+    cue: "Slow down hand movements",
+    played: false,
+  });
+  session = recordBuzz(session, {
+    timestamp: startedAt + 50,
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    reason: "cue",
+    slideTitle: "Opening",
+    cue: "Slow down hand movements",
+    played: true,
+  });
+  const saved = stopSession(session, startedAt + 200);
+  assert.deepEqual(saved.buzzes, [{
+    timestamp: startedAt + 40,
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    reason: "cue",
+    slideTitle: "Opening",
+    cue: "Slow down hand movements",
+    played: false,
+  }]);
+  const loaded = readSessions(JSON.stringify({ sessions: [saved] }));
+  assert.deepEqual(loaded.sessions[0].buzzes, saved.buzzes);
+  assert.equal(loaded.sessions[0].buzzes.some((event) => event.played === true), false);
+});

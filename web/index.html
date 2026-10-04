@@ -142,6 +142,11 @@
               <span>Content</span>
               <textarea id="slide-body" rows="6" maxlength="4000"></textarea>
             </label>
+            <label class="field">
+              <span>Cue</span>
+              <input id="slide-cue" maxlength="240" autocomplete="off" />
+            </label>
+            <p class="quiet">Optional text for this slide, such as “Slow down hand movements”.</p>
             <div class="actions">
               <button type="button" id="slide-add">Add slide</button>
               <button type="button" id="slide-delete">Delete slide</button>
@@ -220,6 +225,10 @@
               <input id="buzz-automatic" type="checkbox" />
               <span>Automatic movement feedback</span>
             </label>
+            <label class="check">
+              <input id="buzz-cue" type="checkbox" />
+              <span>Buzz on slide cue</span>
+            </label>
             <label class="field">
               <span>Cooldown (ms)</span>
               <input id="buzz-cooldown" type="number" min="0" step="1" value="3000" />
@@ -252,6 +261,7 @@
         <p id="stage-count">Slide 1 of 1</p>
         <h2 id="stage-title"></h2>
         <p id="stage-body"></p>
+        <p id="stage-cue" class="quiet stage-cue" hidden></p>
       </article>
       <footer class="stage-controls">
         <button type="button" id="stage-prev">Previous</button>

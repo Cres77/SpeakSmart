@@ -63,4 +63,11 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.doesNotMatch(html, /<svg/);
   assert.match(script, /BUZZ_STORAGE_KEY/);
   assert.match(script, /createBuzzGuard/);
+  assert.match(html, /id="slide-cue"/);
+  assert.match(html, /id="stage-cue"/);
+  assert.match(html, /Buzz on slide cue/);
+  assert.match(html, /id="buzz-cue"/);
+  assert.doesNotMatch(html, /id="buzz-cue"[^>]*checked/);
+  assert.match(script, /createSlideCues/);
+  assert.match(script, /Cue sent\. No tone was played\./);
 });
