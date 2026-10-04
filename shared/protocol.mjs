@@ -66,6 +66,7 @@ export function inspectClientMessage(message) {
   if (type === "reconnect") return inspectReconnect(message);
   if (type === "sensor") return inspectSensor(message);
   if (type === "buzz") return inspectBuzz(message);
+  if (type === "calibration") return inspectCalibration(message);
   return fail("unknown", "Unknown message type.", type);
 }
 
@@ -168,6 +169,24 @@ function inspectBuzz(message) {
     return fail("invalid", "The website does not report playback.", "buzz");
   }
   return { ok: true, type: "buzz", role: "browser" };
+}
+
+function inspectCalibration(message) {
+  if (message.role !== "browser") {
+    return fail("invalid", "calibration is sent by the website.", "calibration");
+  }
+  if (!Number.isFinite(message.timestamp)) {
+    return fail("invalid", "calibration requires a numeric timestamp.", "calibration");
+  }
+  if (message.clear === true) return { ok: true, type: "calibration", role: "browser", clear: true };
+  const baseline = message.baseline;
+  if (!baseline || typeof baseline !== "object" || Array.isArray(baseline)) {
+    return fail("invalid", "calibration requires a baseline vector.", "calibration");
+  }
+  if (![baseline.x, baseline.y, baseline.z].every((value) => Number.isFinite(value))) {
+    return fail("invalid", "baseline x, y, and z must be finite numbers.", "calibration");
+  }
+  return { ok: true, type: "calibration", role: "browser" };
 }
 
 function inspectReconnect(message) {

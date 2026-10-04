@@ -33,6 +33,9 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /id="accel-x"/);
   assert.match(html, /id="accel-y"/);
   assert.match(html, /id="accel-z"/);
+  assert.match(html, /id="calibrate"/);
+  assert.match(html, /Hold still/);
+  assert.match(script, /CALIBRATION_STORAGE_KEY/);
   assert.match(html, /Units unknown/);
   assert.match(html, /Dashboard/);
   for (const label of ["Presentation", "Practice", "Analytics", "Settings"]) {

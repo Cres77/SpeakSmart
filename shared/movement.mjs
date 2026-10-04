@@ -6,6 +6,7 @@
  *
  * Baseline: exponential moving average of the x, y, z vector.
  * The first sample sets the baseline and scores 0, so a steady offset is not movement.
+ * setBaseline can install a resting pose instead. That call is not a sample.
  * Each later sample measures the gap, then moves the baseline 2% of the way toward the sample.
  *
  * Intensity: length of that gap, averaged over the last 5 samples, divided by
@@ -46,6 +47,14 @@ export function createMovementTracker(movementThreshold) {
       recent.length = 0;
       smoothedMagnitude = 0;
       scored = false;
+    },
+    setBaseline(vector) {
+      if (!vector || ![vector.x, vector.y, vector.z].every((value) => Number.isFinite(value))) return false;
+      baseline = { x: vector.x, y: vector.y, z: vector.z };
+      recent.length = 0;
+      smoothedMagnitude = 0;
+      scored = false;
+      return true;
     },
     get smoothedMagnitude() {
       return smoothedMagnitude;

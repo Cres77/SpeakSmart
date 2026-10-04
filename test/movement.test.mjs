@@ -40,6 +40,28 @@ test("a smaller change stays below 100%", () => {
   assert.ok(score > 0.4 && score < 0.75, score);
 });
 
+test("no calibration leaves a constant vector at 0 after the first sample", () => {
+  const tracker = createMovementTracker(threshold);
+  assert.equal(tracker.sample(1, 2, 3), 0);
+  assert.equal(tracker.scored, false);
+  assert.equal(tracker.sample(1, 2, 3), 0);
+  assert.equal(tracker.scored, true);
+  assert.equal(tracker.smoothedMagnitude, 0);
+});
+
+test("a resting baseline scores an identical sample at 0 and a threshold step near 100%", () => {
+  const fresh = createMovementTracker(threshold);
+  assert.equal(fresh.setBaseline({ x: 1, y: 2, z: 3 }), true);
+  assert.equal(fresh.scored, false);
+  assert.equal(fresh.sample(1, 2, 3), 0);
+  assert.equal(fresh.scored, true);
+
+  const stepped = createMovementTracker(threshold);
+  stepped.setBaseline({ x: 1, y: 2, z: 3 });
+  const score = settle(stepped, { x: 1 + threshold, y: 2, z: 3 }, SMOOTH_WINDOW);
+  assert.ok(score >= 0.95 && score <= 1, score);
+});
+
 test("smoothed magnitude is the length before dividing, and the first sample is not scored", () => {
   const tracker = createMovementTracker(threshold);
   const first = tracker.sample(0, 0, 1);

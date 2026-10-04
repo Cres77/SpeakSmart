@@ -125,7 +125,11 @@ Intensity is one formula, in `shared/movement.mjs`, applied by the server:
 3. Smooth that length with a short moving average of the last 5 samples.
 4. Divide by `movementThreshold` from `shared/config.json` (0.35). At the threshold the score is 1, which the page shows as 100%. Above the threshold the score stays at 1. Below it the score is the fraction of the threshold. Negative results are clamped to 0.
 
-A new coach `hello` starts a new baseline. Disconnecting clears it.
+A new coach `hello` starts a new baseline. Disconnecting clears it. The website can send `calibration` with a resting pose. The server sets the tracker baseline to that vector and does not treat the message as a sample. The next real sample is scored against it, then the baseline still moves 2% of the way toward each sample. A later hello clears the tracker; the page sends the stored pose again. Clearing calibration restores the first-sample baseline.
+
+```json
+{ "type": "calibration", "role": "browser", "timestamp": 1710000006000, "baseline": { "x": 0.1, "y": -0.2, "z": 1.0 } }
+```
 
 The page plots `movement` as 0–100% against the sample timestamp. It does not plot X, Y, or Z. Chart.js draws the line. The trace is not a server message.
 

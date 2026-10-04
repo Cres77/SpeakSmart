@@ -44,6 +44,10 @@ const files = {
     file: join(root, "shared/buzz.mjs"),
     type: "text/javascript; charset=utf-8",
   },
+  "/calibration.mjs": {
+    file: join(root, "shared/calibration.mjs"),
+    type: "text/javascript; charset=utf-8",
+  },
   "/chart.js": {
     file: join(root, "node_modules/chart.js/dist/chart.umd.js"),
     type: "text/javascript; charset=utf-8",
@@ -253,6 +257,16 @@ export async function startCoachServer(options = {}) {
         role = "device";
         clearTimeout(helloTimer);
         adoptDevice(socket, message);
+        return;
+      }
+
+      if (result.type === "calibration" && result.role === "browser") {
+        if (role !== "browser") {
+          sendError(socket, { code: "invalid", type: "calibration", message: "Send hello before other coach messages." });
+          return;
+        }
+        if (result.clear) movementTracker.reset();
+        else movementTracker.setBaseline(message.baseline);
         return;
       }
 

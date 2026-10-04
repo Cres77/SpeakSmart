@@ -52,4 +52,6 @@ A manual buzz command is in [shared/PROTOCOL.md](shared/PROTOCOL.md). The page c
 9. Automatic buzz with cooldown. Done. Settings can turn on automatic movement feedback. It is off by default. An excessive hold sends one buzz, then waits `buzzCooldownMs` (3000 ms) before another. The acknowledgement stays `played: false`.
 10. Session analytics and coaching summary. Done. Analytics and the practice review call one summary of the saved session. Automatic feedback stays off unless the setting is on. No tone is played.
 
-Thresholds live in `shared/config.json`: sample rate, movement, gesture magnitude and timing, stillness, excessive level and timing, and buzz cooldown, frequency, duration, and amplitude. The page reads that file. Firmware does not apply it.
+A resting pose can be saved in this browser under `speaksmart.calibration`. The server uses that vector as the movement baseline. Clearing it restores the first-sample baseline. Automatic feedback stays off unless the setting is on.
+
+Thresholds live in `shared/config.json`: sample rate, movement, gesture magnitude and timing, stillness, excessive level and timing, buzz cooldown, frequency, duration, and amplitude, and calibration duration. The page reads that file. Firmware does not apply it.

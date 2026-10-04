@@ -13,6 +13,7 @@ import {
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
 import { BUZZ_STORAGE_KEY, buzzCommandError, createAutomaticFeedback, createBuzzGuard, readBuzzSettings } from "/buzz.mjs";
 import { createMotionDetector } from "/motion.mjs";
+import { CALIBRATION_STORAGE_KEY, readCalibration, restingPose } from "/calibration.mjs";
 import { summarizeSession } from "/summary.mjs";
 import {
   SESSION_STORAGE_KEY,
@@ -38,6 +39,9 @@ const buzzGuard = createBuzzGuard();
 const automaticFeedback = createAutomaticFeedback();
 let lastBuzzReason = "manual";
 const sensorNote = document.querySelector("#sensor-note");
+const calibrateButton = document.querySelector("#calibrate");
+const calibrateClear = document.querySelector("#calibrate-clear");
+const calibrationNote = document.querySelector("#calibration-note");
 const sensorTime = document.querySelector("#sensor-time");
 const accelX = document.querySelector("#accel-x");
 const accelY = document.querySelector("#accel-y");
@@ -55,6 +59,8 @@ const stageDot = document.querySelector("#stage-dot");
 const stageIntensity = document.querySelector("#stage-intensity");
 const series = createIntensitySeries();
 let chartSession = null;
+let calibrationRun = null;
+let calibrationDurationMs = 3000;
 let motionConfig = null;
 let dashboardMotion = null;
 let practiceMotion = null;
@@ -221,7 +227,94 @@ function renderIntensity(movement) {
   stageIntensity.textContent = `${percent}%`;
 }
 
+function calibrationText(stored) {
+  if (!stored) return "Hold still, then calibrate.";
+  const saved = `Resting pose saved (${stored.samples} samples).`;
+  if (stored.transport === "development-stand-in") {
+    return `${saved} This pose came from the development stand-in, not from a hand.`;
+  }
+  return saved;
+}
+
+function paintCalibration(stored) {
+  calibrationNote.textContent = calibrationText(stored);
+}
+
+function sendCalibration(message) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify(message));
+}
+
+function sendStoredCalibration() {
+  const stored = readCalibration(localStorage.getItem(CALIBRATION_STORAGE_KEY));
+  if (!stored) return;
+  sendCalibration({
+    type: "calibration",
+    role: "browser",
+    timestamp: stored.timestamp,
+    baseline: stored.baseline,
+  });
+}
+
+function noteCalibrationSample(message) {
+  if (!calibrationRun || !message.accel) return;
+  const { x, y, z } = message.accel;
+  if (![x, y, z].every((value) => Number.isFinite(value))) return;
+  if (Date.now() - calibrationRun.startedAt >= calibrationRun.duration) return;
+  calibrationRun.samples.push({ x, y, z });
+}
+
+function finishCalibration() {
+  if (!calibrationRun) return;
+  const taken = calibrationRun.samples;
+  clearTimeout(calibrationRun.timer);
+  calibrationRun = null;
+  const pose = restingPose(taken);
+  if (!pose) {
+    calibrationNote.textContent = "Calibration failed. Fewer than 20 samples arrived.";
+    return;
+  }
+  const stored = {
+    timestamp: Date.now(),
+    samples: pose.samples,
+    baseline: { x: pose.x, y: pose.y, z: pose.z },
+  };
+  if (typeof latestLink?.transport === "string" && latestLink.transport) stored.transport = latestLink.transport;
+  localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(stored));
+  sendCalibration({
+    type: "calibration",
+    role: "browser",
+    timestamp: stored.timestamp,
+    baseline: stored.baseline,
+  });
+  paintCalibration(stored);
+}
+
+function beginCalibration() {
+  if (calibrationRun) return;
+  const duration = Number.isFinite(calibrationDurationMs) ? calibrationDurationMs : 3000;
+  calibrationRun = { startedAt: Date.now(), duration, samples: [], timer: null };
+  calibrationNote.textContent = "Hold still. Collecting a resting pose.";
+  calibrationRun.timer = setTimeout(finishCalibration, duration);
+}
+
+function clearStoredCalibration() {
+  if (calibrationRun) {
+    clearTimeout(calibrationRun.timer);
+    calibrationRun = null;
+  }
+  localStorage.removeItem(CALIBRATION_STORAGE_KEY);
+  sendCalibration({
+    type: "calibration",
+    role: "browser",
+    timestamp: Date.now(),
+    clear: true,
+  });
+  calibrationNote.textContent = "Calibration cleared. The next sample sets the baseline.";
+}
+
 function renderSample(message) {
+  if (message.accel) noteCalibrationSample(message);
   if (coachStatus === "disconnected" || !message.accel) return;
   accelX.textContent = formatAxis(message.accel.x);
   accelY.textContent = formatAxis(message.accel.y);
@@ -338,6 +431,7 @@ function connectPage() {
     const sessionChanged = nextSession !== chartSession;
     if (sessionChanged) chartSession = nextSession;
     if (sessionChanged || message.status === "disconnected") clearChart();
+    if (sessionChanged && message.status === "connected") sendStoredCalibration();
     renderStatus(message.status);
     renderDetail(message);
   });
@@ -383,6 +477,7 @@ fetch("/config.json")
     buzzAmplitude.value = String(stored.amplitude);
     buzzAutomatic.checked = stored.automatic === true;
     buzzCooldown.value = String(stored.cooldown);
+    if (Number.isFinite(loaded.calibrationDurationMs)) calibrationDurationMs = loaded.calibrationDurationMs;
   })
   .catch(() => {});
 connectPage();
@@ -1022,6 +1117,9 @@ function showPractice() {
 navPractice.addEventListener("click", showPractice);
 navAnalytics.addEventListener("click", showAnalytics);
 navSettings.addEventListener("click", showSettings);
+calibrateButton.addEventListener("click", beginCalibration);
+calibrateClear.addEventListener("click", clearStoredCalibration);
+paintCalibration(readCalibration(localStorage.getItem(CALIBRATION_STORAGE_KEY)));
 buzzSend.addEventListener("click", sendBuzz);
 buzzTest.addEventListener("click", sendBuzz);
 for (const field of [buzzFrequency, buzzDuration, buzzAmplitude, buzzCooldown]) {

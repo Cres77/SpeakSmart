@@ -361,3 +361,88 @@ test("the development stand-in acknowledges a buzz with played false", async () 
     await app.close();
   }
 });
+
+test("calibration sets the baseline and is not scored as a sample", async () => {
+  const app = await startCoachServer({ port: 0, standIn: false });
+  try {
+    const page = await browser(`ws://127.0.0.1:${app.port}/ws`);
+    const coach = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    await opened(coach);
+    const connected = waitFor(page.socket, (message) => message.status === "connected");
+    coach.send(JSON.stringify(deviceHello({ deviceId: "wrist-1" })));
+    const up = await connected;
+
+    const seen = [];
+    page.socket.addEventListener("message", (event) => {
+      seen.push(JSON.parse(event.data));
+    });
+    page.socket.send(JSON.stringify({
+      type: "calibration",
+      role: "browser",
+      timestamp: 1710000005000,
+      baseline: { x: 1, y: 2, z: 3 },
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(seen.some((message) => message.type === "sensor"), false);
+
+    const matched = waitFor(page.socket, (message) => message.type === "sensor");
+    coach.send(JSON.stringify(deviceSensor({
+      deviceId: "wrist-1",
+      x: 1,
+      y: 2,
+      z: 3,
+      timestamp: 1710000005100,
+    })));
+    const scored = await matched;
+    assert.equal(scored.movement, 0);
+    assert.equal(scored.scored, true);
+
+    page.socket.send(JSON.stringify({
+      type: "calibration",
+      role: "browser",
+      timestamp: 1710000005200,
+      clear: true,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const cleared = waitFor(page.socket, (message) => message.type === "sensor" && message.timestamp === 1710000005300);
+    coach.send(JSON.stringify(deviceSensor({
+      deviceId: "wrist-1",
+      x: 1,
+      y: 2,
+      z: 3,
+      timestamp: 1710000005300,
+    })));
+    const first = await cleared;
+    assert.equal(first.movement, 0);
+    assert.equal(first.scored, false);
+
+    coach.close();
+    const again = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    await opened(again);
+    const restored = waitFor(page.socket, (message) => message.status === "connected" && message.session > up.session);
+    again.send(JSON.stringify(deviceHello({ deviceId: "wrist-1" })));
+    const hello = await restored;
+    page.socket.send(JSON.stringify({
+      type: "calibration",
+      role: "browser",
+      timestamp: hello.timestamp,
+      baseline: { x: 1, y: 2, z: 3 },
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const afterHello = waitFor(page.socket, (message) => message.type === "sensor" && message.timestamp === 1710000005400);
+    again.send(JSON.stringify(deviceSensor({
+      deviceId: "wrist-1",
+      x: 1,
+      y: 2,
+      z: 3,
+      timestamp: 1710000005400,
+    })));
+    const resumed = await afterHello;
+    assert.equal(resumed.movement, 0);
+    assert.equal(resumed.scored, true);
+    page.socket.close();
+    again.close();
+  } finally {
+    await app.close();
+  }
+});

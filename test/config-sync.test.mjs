@@ -29,4 +29,5 @@ test("firmware config matches shared/config.json", () => {
   assert.equal(define("COACH_HEARTBEAT_TIMEOUT_MS"), config.heartbeatTimeoutMs);
   assert.equal(define("COACH_RECONNECT_GRACE_MS"), config.reconnectGraceMs);
   assert.equal(define("COACH_SERVER_PORT"), config.serverPort);
+  assert.equal(define("COACH_CALIBRATION_DURATION_MS"), config.calibrationDurationMs);
 });
