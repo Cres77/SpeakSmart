@@ -100,9 +100,19 @@ test("sensor x y z is accepted and a manual buzz has limits", () => {
     duration: 150,
     amplitude: 0.2,
     played: true,
+    note: "Listen for the tone.",
     timestamp: 1,
   });
-  assert.equal(played.code, "invalid");
+  assert.equal(played.ok, true);
+  const missingPlayed = inspectClientMessage({
+    type: "buzz",
+    role: "device",
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    timestamp: 1,
+  });
+  assert.equal(missingPlayed.code, "invalid");
   const noted = inspectClientMessage({
     type: "buzz",
     role: "device",

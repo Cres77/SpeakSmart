@@ -157,8 +157,8 @@ function inspectBuzz(message) {
     return fail("invalid", "buzz requires a numeric amplitude.", "buzz");
   }
   if (message.role === "device") {
-    if (message.played !== false) {
-      return fail("invalid", "The coach acknowledgement must say the tone was not played.", "buzz");
+    if (typeof message.played !== "boolean") {
+      return fail("invalid", "The coach acknowledgement must set played to true or false.", "buzz");
     }
     if (message.note !== undefined && typeof message.note !== "string") {
       return fail("invalid", "buzz note must be a string.", "buzz");

@@ -330,7 +330,7 @@ function renderSample(message) {
   sensorNote.textContent = standIn
     ? "Development stand-in. This is not a FreeWili."
     : freewili
-      ? "FreeWili sample."
+      ? "FreeWili sample, milli-g."
       : "Latest sample.";
 }
 
@@ -424,12 +424,16 @@ function connectPage() {
       return;
     }
     if (message.type === "buzz") {
-      const base = lastBuzzReason === "excessive"
-        ? "Excessive movement detected. Command sent to the FreeWili. The board does not confirm playback; listen for the tone."
+      const result = message.played === true
+        ? "Command returned OK."
+        : "Command did not return OK.";
+      const note = typeof message.note === "string" && message.note ? message.note : "Listen for the tone.";
+      const prefix = lastBuzzReason === "excessive"
+        ? "Excessive movement detected. "
         : lastBuzzReason === "cue"
-          ? "Cue sent. Command sent to the FreeWili. The board does not confirm playback; listen for the tone."
-          : "Command sent to the FreeWili. The board does not confirm playback; listen for the tone.";
-      setBuzzNote(base);
+          ? "Cue sent. "
+          : "";
+      setBuzzNote(`${prefix}${result} ${note}`);
       return;
     }
     if (message.type === "error" && message.for === "buzz") {
@@ -674,7 +678,7 @@ function considerAutomatic(event) {
     amplitude: command.amplitude,
     timestamp: command.timestamp,
   }));
-  setBuzzNote("Excessive movement detected. Command sent to the FreeWili. The board does not confirm playback; listen for the tone.");
+  setBuzzNote("Excessive movement detected. Listen for the tone.");
 }
 
 function saveBuzzForm() {

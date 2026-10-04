@@ -20,7 +20,7 @@ The local server is the hub. The browser and the coach are both clients of that 
 }
 ```
 
-`transport` is optional. The development stand-in sends `development-stand-in`. The USB bridge sends `freewili` only after `FreeWili.open()` has opened that board, and `deviceId` is then that board's serial. A missing transport is not a physical FreeWili. The stand-in never sends `freewili`.
+`transport` is optional. The development stand-in sends `development-stand-in`. The USB bridge sends `freewili` only after `OneWili(port).open()` has opened the Main CDC port `0x093C:0x2054`, and `deviceId` is then that board's serial. A missing transport is not a physical FreeWili. The stand-in never sends `freewili`.
 
 `heartbeat` — liveness while the socket stays open. Interval is `heartbeatIntervalMs` in `shared/config.json` (2000). The server marks the coach disconnected if none arrives within `heartbeatTimeoutMs` (7000).
 
@@ -47,7 +47,7 @@ The local server is the hub. The browser and the coach are both clients of that 
 
 `reason` is `shutdown` or `reconnect`.
 
-`sensor` — one accelerometer sample. Rate is `sampleRateHz` in `shared/config.json` (50). The coach sends raw `x`, `y`, and `z` only. It does not send `movement`. `g` is included only when a verified `AccelData.g` arrives with `x`, `y`, and `z`. The stand-in does not send `g` and does not send a movement score.
+`sensor` — one accelerometer sample. Rate is `sampleRateHz` in `shared/config.json` (50). The coach sends raw `x`, `y`, and `z` only. It does not send `movement`. The USB bridge does not send `g`. The stand-in does not send `g` and does not send a movement score.
 
 ```json
 {
@@ -62,7 +62,7 @@ The local server is the hub. The browser and the coach are both clients of that 
 
 `transport` on this message is optional. The server forwards the transport captured at `hello`, not a later claim that the coach is a FreeWili.
 
-Units of `x`, `y`, `z`, and `g` are unknown. Do not treat the numbers as g or m/s². Intensity uses those same unknown units. The stand-in's numbers are synthetic and are not `AccelData`.
+On the USB bridge, `x`, `y`, and `z` are milli-g from OneWili `*motion` fields `ax_mg`, `ay_mg`, and `az_mg`. They are passed through and are not converted to g or m/s². Gyro fields are not sent. The server still applies `movementThreshold` to those milli-g numbers; that threshold was not recalibrated for milli-g. The stand-in's numbers are synthetic and are not milli-g.
 
 A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. That number is not forwarded and is not used as the score.
 
@@ -100,7 +100,7 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
 
 `session` starts at 0 and increases by one on each coach `hello`. Heartbeats keep the same number. The page uses it to tell a new hello from a heartbeat.
 
-`sensor` — the coach sample, plus the server's intensity and smoothed magnitude. `movement` is a number from 0 to 1. 1 means 100%. `magnitude` is the smoothed baseline-removed length in the sample's unknown units, before dividing by `movementThreshold`. `scored` is false on the sample that only sets the baseline; that sample is not a stillness, gesture, or excessive-movement sample. The browser does not calculate intensity or magnitude.
+`sensor` — the coach sample, plus the server's intensity and smoothed magnitude. `movement` is a number from 0 to 1. 1 means 100%. `magnitude` is the smoothed baseline-removed length in the sample's units, before dividing by `movementThreshold`. For the USB bridge those units are milli-g. `scored` is false on the sample that only sets the baseline; that sample is not a stillness, gesture, or excessive-movement sample. The browser does not calculate intensity or magnitude.
 
 ```json
 {
@@ -121,7 +121,7 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
 Intensity is one formula, in `shared/movement.mjs`, applied by the server:
 
 1. Keep a slow baseline, an exponential moving average of the `x`, `y`, `z` vector. The first sample sets the baseline and scores 0, so a constant offset such as gravity is not movement. Each later sample is compared with the baseline, and the baseline then moves 2% of the way toward that sample.
-2. Take the straight-line length of the sample minus the baseline. That length stays in the sample's unknown units.
+2. Take the straight-line length of the sample minus the baseline. That length stays in the sample's units. For the USB bridge those units are milli-g.
 3. Smooth that length with a short moving average of the last 5 samples.
 4. Divide by `movementThreshold` from `shared/config.json` (0.35). At the threshold the score is 1, which the page shows as 100%. Above the threshold the score stays at 1. Below it the score is the fraction of the threshold. Negative results are clamped to 0.
 
@@ -192,7 +192,7 @@ The website role is `browser`. A second click while that pulse’s duration has 
 { "type": "buzz", "role": "device", "frequency": 350, "duration": 150, "amplitude": 0.2, "played": false, "timestamp": 1710000009100 }
 ```
 
-The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is false. The development stand-in does not set `played` to true. The server forwards `played: false`. An optional `note` string is forwarded when the coach sends one. The USB bridge calls `FreeWili.play_audio_tone(frequency_hz, duration_sec, amplitude, processor)` on Display, and on Main when Display returns a response-frame timeout. The v54 result is unreliable, so the ack still sends `played: false`, with `note` set to `v54 firmware: Response frame always returns failure`. The page asks you to listen for the tone. The host firmware function `buzz` does not call a speaker and does not return success.
+The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is a boolean. The USB bridge sets it true only when `dev.io.audio.tone(frequency, duration_ms, amplitude)` returns Ok, and false when that call returns Err or does not return in time. `duration_ms` is the protocol duration in milliseconds. The note asks the user to listen. A buzz while motion is streaming clears OneWili's event queue, so a few samples can be dropped. The development stand-in sends `played: false` because it does not call OneWili. The server forwards the boolean it received. The host firmware function `buzz` does not call a speaker and does not return success.
 
 Two verified tone APIs use different duration units. Do not mix them, and do not call them from the host build:
 

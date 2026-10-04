@@ -327,7 +327,7 @@ export async function startCoachServer(options = {}) {
           frequency: message.frequency,
           duration: message.duration,
           amplitude: message.amplitude,
-          played: false,
+          played: message.played,
           timestamp: message.timestamp,
         };
         if (typeof message.note === "string" && message.note) ack.note = message.note;

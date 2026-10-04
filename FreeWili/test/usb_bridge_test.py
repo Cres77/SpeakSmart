@@ -12,29 +12,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bridge"))
 
 from diagnose import (  # noqa: E402
     HEARD_PROMPT,
-    diagnose_processors,
+    diagnose_device,
 )
 from freewili_usb import (  # noqa: E402
-    TONE_FAILURE_NOTE,
-    axes_from_accel_data,
+    LISTEN_NOTE,
     board_identity,
     describe_missing,
+    describe_no_main,
     hello_message,
     ignored_host_message,
+    main_cdc_port,
+    motion_axes,
     network_target,
+    open_main_port,
     play_pulse,
     sample_window_lines,
     select_device,
-    start_accel_events,
 )
 from coach_bridge import SampleQueue, run_coach  # noqa: E402
 
 
 class Usb:
-    def __init__(self, vid, pid, serial=""):
+    def __init__(self, vid, pid, serial="", port=None, name=""):
         self.vid = vid
         self.pid = pid
         self.serial = serial
+        self.port = port
+        self.name = name
 
 
 class Board:
@@ -131,6 +135,20 @@ class SelectTests(unittest.TestCase):
         self.assertEqual(message["deviceId"], "ABC123")
         self.assertNotEqual(message["deviceId"], "E4:B3:23:99:F0:08")
 
+    def test_only_the_main_cdc_port_is_opened(self):
+        main = Usb(0x093C, 0x2054, "FW4923", port="/dev/ttyACM0", name="FWOG main ogfw 024")
+        display = Usb(0x093C, 0x2055, "FW4923", port="/dev/ttyACM1", name="FWOG display ogfw 020")
+        debug = Usb(0x303A, 0x1001, "E4:B3:23:99:F0:08", port="/dev/ttyACM2", name="USB JTAG/serial debug unit")
+        chosen = Board("FW4923", [debug, display, main])
+        self.assertEqual(main_cdc_port(chosen), "/dev/ttyACM0")
+        self.assertIsNone(main_cdc_port(Board("FW4923", [display])))
+        self.assertIsNone(main_cdc_port(Board("FW4923", [debug])))
+        self.assertIn("not opened", describe_no_main(Board("FW4923", [display])))
+        source = Path(__file__).resolve().parent.parent.joinpath("bridge/freewili_usb.py").read_text()
+        self.assertNotIn("1200", source)
+        self.assertNotIn("onewili.connect(", source)
+        self.assertNotIn("serial.Serial", source)
+
 
 class Result:
     def __init__(self, err=None, value="ok"):
@@ -150,72 +168,147 @@ class Result:
         return self._value
 
 
-class Processor:
-    def __init__(self, name):
-        self.name = name
+
+class Frame:
+    def __init__(self, path, response):
+        self.path = path
+        self.response = response
 
 
-class AccelEnableTests(unittest.TestCase):
-    def test_display_error_then_main_ok_is_success(self):
-        calls = []
-        timeout = "Failed to read response frame in 6.0 seconds"
+class MotionTests(unittest.TestCase):
+    def test_motion_axes_are_milli_g_and_gyro_is_ignored(self):
+        sample = motion_axes(Frame("*motion", "12 -34 1002 1 2 3"))
+        self.assertEqual(sample, {"x": 12, "y": -34, "z": 1002})
+        self.assertNotIn("g", sample)
 
-        class Device:
-            def enable_accel_events(self, enable, interval, processor):
-                calls.append((enable, interval, processor.name))
-                if processor.name == "Display":
-                    return Result(timeout)
-                return Result(None)
+    def test_other_events_are_not_samples(self):
+        self.assertIsNone(motion_axes(Frame("*button", "1")))
+        self.assertIsNone(motion_axes(Frame("*motion", "12 -34")))
 
-        display = Processor("Display")
-        main = Processor("Main")
+
+class FakeQueue:
+    def __init__(self, items):
+        self.items = list(items)
+
+    def get_nowait(self):
+        if not self.items:
+            raise IndexError("empty")
+        return self.items.pop(0)
+
+
+class FakeOneWili:
+    def __init__(self, zone_err=None, tone_err=None, stream_err=None):
+        self.calls = []
+        self._transport = type("T", (), {"events": FakeQueue([])})()
+        self.hardware = type("H", (), {"power_management": self})()
+        self.io = type("I", (), {"sensors": self, "audio": self})()
+        self.zone_err = zone_err
+        self.tone_err = tone_err
+        self.stream_err = stream_err
+
+    def set_zone(self, zone, on):
+        self.calls.append(("zone", zone, on))
+        if self.zone_err and zone == self.zone_err[0]:
+            return Result(self.zone_err[1])
+        return Result(None, "zone")
+
+    def enable_motion_stream(self, interval):
+        self.calls.append(("stream", interval))
+        if self.stream_err is not None and interval != 0:
+            return Result(self.stream_err)
+        return Result(None, "stream")
+
+    def tone(self, frequency, duration_ms, amplitude):
+        self.calls.append(("tone", frequency, duration_ms, amplitude))
+        if self.tone_err:
+            return Result(self.tone_err)
+        return Result(None, "tone")
+
+    def open(self):
+        self.calls.append(("open",))
+        return self
+
+    def close(self):
+        self.calls.append(("close",))
+
+
+class ToneTests(unittest.TestCase):
+    def test_tone_uses_milliseconds_and_played_follows_ok(self):
+        device = FakeOneWili()
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            chosen = start_accel_events(Device(), 20, (display, main))
-        self.assertIs(chosen, main)
-        self.assertEqual(calls, [(True, 20, "Display"), (True, 20, "Main")])
-        text = buf.getvalue()
-        self.assertIn("enable_accel_events Ok on Main", text)
-        self.assertIn(timeout, text)
-        self.assertNotIn("played", text)
+            pulse = play_pulse(device, 350, 150, 0.2)
+        self.assertEqual(device.calls, [("zone", 3, 1), ("tone", 350.0, 150.0, 0.2)])
+        self.assertIs(pulse["played"], True)
+        self.assertEqual(pulse["note"], LISTEN_NOTE)
+        self.assertNotIn("played: true", buf.getvalue().lower())
 
-    def test_display_ok_does_not_call_main(self):
-        calls = []
-
-        class Device:
-            def enable_accel_events(self, enable, interval, processor):
-                calls.append(processor.name)
-                return Result(None)
-
-        display = Processor("Display")
-        main = Processor("Main")
+    def test_epowerzone_stays_a_failure(self):
+        device = FakeOneWili(tone_err="EPOWERZONE 3 Audio")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            chosen = start_accel_events(Device(), 20, (display, main))
-        self.assertIs(chosen, display)
-        self.assertEqual(calls, ["Display"])
-        self.assertIn("enable_accel_events Ok on Display", buf.getvalue())
+            pulse = play_pulse(device, 350, 150, 0.2)
+        self.assertIs(pulse["played"], False)
+        self.assertIn("EPOWERZONE", pulse["note"])
+        self.assertIn("Listen for the tone.", pulse["note"])
+        self.assertIn("EPOWERZONE from tone", buf.getvalue())
 
-    def test_both_processor_errors_stay_a_failure(self):
-        calls = []
 
-        class Device:
-            def enable_accel_events(self, enable, interval, processor):
-                calls.append(processor.name)
-                return Result("Failed to read response frame in 6.0 seconds")
+class Clock:
+    def __init__(self):
+        self.now = 0
 
-        display = Processor("Display")
-        main = Processor("Main")
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            chosen = start_accel_events(Device(), 20, (display, main))
-        self.assertIsNone(chosen)
-        self.assertEqual(calls, ["Display", "Main"])
-        text = buf.getvalue()
-        self.assertIn("enable_accel_events failed on Display and Main", text)
-        self.assertNotIn("Ok on", text)
-        self.assertNotIn("played", text)
-        self.assertNotIn('"x"', text)
+    def __call__(self):
+        return self.now
+
+    def sleep(self, delay):
+        self.now += delay
+
+
+class DiagnoseTests(unittest.TestCase):
+    def test_diagnose_streams_main_and_does_not_claim_playback(self):
+        device = FakeOneWili()
+        device.product_name = "FWOG main ogfw 024"
+        device._transport.events = FakeQueue([
+            Frame("*motion", "12 -34 1002 0 0 0"),
+            Frame("*motion", "13 -35 1001 9 9 9"),
+            Frame("*field", "1 2 3 4 5"),
+        ])
+        clock = Clock()
+        lines = diagnose_device(device, seconds=5, sleep=clock.sleep, clock=clock, log=lambda text, flush=False: None)
+        text = "\n".join(lines)
+        self.assertIn("FWOG main ogfw 024", text)
+        self.assertIn("does not expose a firmware version", text)
+        self.assertIn("set_zone(1, 1) Sensors: Ok:", text)
+        self.assertIn("enable_motion_stream(20): Ok:", text)
+        self.assertIn("motion samples in 5s: 2", text)
+        self.assertIn("milli-g x=12 y=-34 z=1002", text)
+        self.assertIn("milli-g x=13 y=-35 z=1001", text)
+        self.assertNotIn("x=9", text)
+        self.assertIn("enable_motion_stream(0): Ok:", text)
+        self.assertIn("set_zone(3, 1) Audio: Ok:", text)
+        self.assertIn("tone(350, 150, 0.2): Ok:", text)
+        self.assertIn(HEARD_PROMPT, text)
+        self.assertNotIn("heard a tone.", text.lower().split("whether")[0])
+        self.assertEqual([call[0] for call in device.calls], ["zone", "stream", "stream", "zone", "tone"])
+        self.assertIn(("tone", 350.0, 150.0, 0.2), device.calls)
+
+    def test_open_passes_only_the_port(self):
+        seen = {}
+
+        class Cls:
+            def __init__(self, port):
+                seen["port"] = port
+                seen["args"] = (port,)
+
+            def open(self):
+                seen["opened"] = True
+                return self
+
+        device = open_main_port("/dev/ttyACM0", Cls)
+        self.assertEqual(seen["args"], ("/dev/ttyACM0",))
+        self.assertIs(seen["opened"], True)
+        self.assertIs(device.open() if False else device, device)
 
 
 class MissingDeviceTests(unittest.TestCase):
@@ -255,60 +348,6 @@ class MissingDeviceTests(unittest.TestCase):
 
 
 class SampleAndToneTests(unittest.TestCase):
-    def test_axes_pass_through(self):
-        sample = axes_from_accel_data(type("Accel", (), {"x": 64, "y": -768, "z": 16448, "g": 2})())
-        self.assertEqual(sample, {"x": 64, "y": -768, "z": 16448, "g": 2})
-
-    def test_queue_drops_oldest_without_blocking(self):
-        samples = SampleQueue(8)
-        for value in range(10):
-            samples.push({"x": value, "y": 0, "z": 0})
-        self.assertEqual(samples.pop_nowait()["x"], 2)
-
-    def test_tone_maps_milliseconds_and_stays_unplayed(self):
-        seen = []
-
-        class Fake:
-            def play_audio_tone(self, frequency_hz, duration_sec, amplitude, processor):
-                seen.append((frequency_hz, duration_sec, amplitude, processor.name))
-                if processor.name == "Display":
-                    return Result("Failed to read response frame in 6.0 seconds")
-                return Result(None, "sent")
-
-        display = Processor("Display")
-        main = Processor("Main")
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            pulse = play_pulse(Fake(), 350, 150, 0.2, (display, main))
-        self.assertEqual(seen, [(350, 0.15, 0.2, "Display"), (350, 0.15, 0.2, "Main")])
-        self.assertIs(pulse["played"], False)
-        self.assertEqual(pulse["note"], TONE_FAILURE_NOTE)
-        self.assertNotIn("played: true", buf.getvalue().lower())
-
-    def test_tone_stops_when_display_returns_ok(self):
-        seen = []
-
-        class Fake:
-            def play_audio_tone(self, frequency_hz, duration_sec, amplitude, processor):
-                seen.append(processor.name)
-                return Result(None)
-
-        pulse = play_pulse(Fake(), 350, 150, 0.2, (Processor("Display"), Processor("Main")))
-        self.assertEqual(seen, ["Display"])
-        self.assertIs(pulse["played"], False)
-
-    def test_tone_other_display_error_does_not_try_main(self):
-        seen = []
-
-        class Fake:
-            def play_audio_tone(self, frequency_hz, duration_sec, amplitude, processor):
-                seen.append(processor.name)
-                return Result("closed")
-
-        pulse = play_pulse(Fake(), 350, 150, 0.2, (Processor("Display"), Processor("Main")))
-        self.assertEqual(seen, ["Display"])
-        self.assertIs(pulse["played"], False)
-
     def test_sample_window_logs_counts_and_an_empty_board(self):
         self.assertEqual(
             sample_window_lines(4, 3, True),
@@ -327,97 +366,19 @@ class SampleAndToneTests(unittest.TestCase):
         self.assertEqual(samples.take_counts(), (2, 1))
         self.assertEqual(samples.take_counts(), (0, 0))
 
+    def test_queue_drops_oldest_without_blocking(self):
+        samples = SampleQueue(8)
+        for value in range(10):
+            samples.push({"x": value, "y": 0, "z": 0})
+        self.assertEqual(samples.pop_nowait()["x"], 2)
+
     def test_wifi_host_is_not_a_client(self):
         self.assertIsNone(network_target("192.168.4.1"))
         message = ignored_host_message("192.168.4.1")
         self.assertIn("FREEWILI_HOST=192.168.4.1", message)
-        self.assertIn("FreeWili.find_all()", message)
+        self.assertIn("OneWili(port).open()", message)
         self.assertIn("USB", message)
         self.assertIsNone(ignored_host_message(""))
-
-
-class DiagnoseTests(unittest.TestCase):
-    def test_display_and_main_are_reported_without_claiming_playback(self):
-        class Accel:
-            pass
-
-        class Event:
-            def __init__(self, name):
-                self.name = name
-
-        class Clock:
-            def __init__(self):
-                self.now = 0
-
-            def __call__(self):
-                return self.now
-
-            def sleep(self, delay):
-                self.now += delay
-
-        class Device:
-            def __init__(self):
-                self.calls = []
-                self.callback = None
-                self._sent = False
-
-            def get_app_info(self, processor):
-                self.calls.append(("info", processor.name))
-                if processor.name == "Display":
-                    return Result("Failed to read response frame in 6.0 seconds")
-                return Result(None, "Main v54")
-
-            def enable_accel_events(self, enable, interval, processor):
-                self.calls.append(("accel", enable, interval, processor.name))
-                if processor.name == "Display" and enable:
-                    return Result("Failed to read response frame in 6.0 seconds")
-                return Result(None, "enabled" if enable else "disabled")
-
-            def set_event_callback(self, callback):
-                self.callback = callback
-
-            def process_events(self):
-                if self.callback is None or self._sent:
-                    return
-                self._sent = True
-                self.callback(Event("Accel"), None, Accel())
-                self.callback(Event("Button"), None, object())
-
-            def play_audio_tone(self, frequency, duration, amplitude, processor):
-                self.calls.append(("tone", frequency, duration, amplitude, processor.name))
-                return Result(None, "response")
-
-        clock = Clock()
-        device = Device()
-        buf = io.StringIO()
-        lines = diagnose_processors(
-            device,
-            (Processor("Display"), Processor("Main")),
-            Accel,
-            seconds=5,
-            sleep=clock.sleep,
-            clock=clock,
-            log=lambda text, flush=False: print(text, file=buf, flush=flush),
-        )
-        text = "\n".join(lines)
-        self.assertIn("Display get_app_info: Err: Failed to read response frame in 6.0 seconds", text)
-        self.assertIn("Main get_app_info: Ok: Main v54", text)
-        self.assertIn("Display enable_accel_events(True, 100, Display): Err: Failed to read response frame in 6.0 seconds", text)
-        self.assertIn("Main enable_accel_events(True, 100, Main): Ok: enabled", text)
-        self.assertIn("Display events in 5s by EventType: Accel 1, Button 1", text)
-        self.assertIn("Display AccelData: 1", text)
-        self.assertIn("Main events in 5s by EventType: none", text)
-        self.assertIn("Main AccelData: 0", text)
-        self.assertIn("Display enable_accel_events(False) skipped after Err", text)
-        self.assertIn("Main enable_accel_events(False, None, Main): Ok: disabled", text)
-        self.assertIn("Display play_audio_tone(350, 0.15, 0.2, Display): Ok: response", text)
-        self.assertIn("Main play_audio_tone(350, 0.15, 0.2, Main): Ok: response", text)
-        self.assertEqual(text.count(HEARD_PROMPT), 2)
-        self.assertNotIn("played", text.lower())
-        self.assertIn(("tone", 350, 0.15, 0.2, "Display"), device.calls)
-        self.assertIn(("tone", 350, 0.15, 0.2, "Main"), device.calls)
-        self.assertIn(("accel", False, None, "Main"), device.calls)
-        self.assertNotIn(("accel", False, None, "Display"), device.calls)
 
 
 if __name__ == "__main__":

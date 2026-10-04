@@ -1,76 +1,63 @@
 """USB host calls for one FreeWili. Nothing in this file talks to the coach WebSocket.
 
-Verified API, freewili 0.0.51 (https://pypi.org/project/freewili/0.0.51/)
-and the docs it publishes:
+OG firmware does not speak freewili-python. Commands use OneWili, pinned in
+bridge/requirements.txt to commit b0eeccda21b0594c8062cd17e9755f0c26b0cf6b.
+Line numbers below are that commit's python/onewili tree.
 
-- FreeWili.find_all() -> tuple[FreeWili, ...]
-  https://freewili.github.io/freewili-python/api/fw.html
-  Package source freewili/fw.py: find_all() calls pyfwfinder.find_all() and
-  wraps each FreeWiliDevice. FreeWili.device.serial is the board serial
-  (FreeWili.__str__ prints self.device.serial).
-- pyfwfinder 0.5.0 stub pyfwfinder.pyi:
-  FreeWiliDevice.serial: str
-  FreeWiliDevice.usb_devices: list[USBDevice]
-  USBDevice.vid: int
-  USBDevice.pid: int
-  USBDevice.serial: str
-- USB IDs named by pyfwfinder 0.5.0, which freewili.find_all uses.
-  freewili-finder v0.5.0 include/usbdef.hpp
-  (https://github.com/freewili/freewili-finder/blob/v0.5.0/include/usbdef.hpp):
-  USB_VID_FW_FTDI = 0x0403, USB_PID_FW_FTDI = 0x6014
-  USB_VID_FW2_FTDI = 0x0403, USB_PID_FW2_FTDI = 0x6014
-  USB_VID_FW_ICS = 0x093C
-  USB_PID_FW_MAIN_CDC_PID = 0x2054
-  USB_PID_FW_DISPLAY_CDC_PID = 0x2055
-  find_all() returns one FreeWili per board. open() opens main_serial and
-  display_serial (the CDC ports). This file does not scan serial-port names.
-  Espressif USB JTAG/serial debug unit VID 0x303a PID 0x1001 is not in that
-  list. find_all() matching ignores it. It is not a FreeWili.
-- FreeWili.open(block=True, timeout_sec=6.0) -> Ok[None] | Err[str]
-  FreeWili.close(restore_menu=True) -> None
-  FreeWili.main_serial / FreeWili.display_serial -> None | FreeWiliSerial
-  Result.is_err() and Result.err() are what fw.py uses on open().
-- FreeWili.set_event_callback(cb) with cb(event_type, frame, data).
-  None disables the callback.
-  https://freewili.github.io/freewili-python/examples.html
-  Event Handling (Console): set_event_callback, then
-  enable_accel_events(True, interval_ms), then process_events() in a loop.
-- FreeWili.enable_accel_events(enable, interval_ms=None,
-  processor=FreeWiliProcessorType.Display) -> Ok[str] | Err[str]
-- AccelData(g, x, y, z, temp_c, temp_f) named fields x, y, z, and g.
-  https://freewili.github.io/freewili-python/api/types.html
-  EventType.Accel is the accelerometer event. Units are not stated there.
-  Values are passed through. They are not scaled.
-- FreeWili.play_audio_tone(frequency_hz: int, duration_sec: float,
-  amplitude: float, processor=Display) -> Ok[str] | Err[str]
-  The Audio Playback - Tone example says:
-  "v54 firmware: Response frame always returns failure"
-  and does not treat that return as success. played stays false for that reason.
-
-freewili 0.0.51 constructs FreeWili from a USB FreeWiliDevice only.
-FreeWili.find_all and FreeWili.open take no IP address. There is no Wi-Fi
-client in this package, so FREEWILI_HOST is not a connection.
+- Do not call the package connect helper. __init__.py:51-59 can fall back to ports[0],
+  which may be the Display CDC port. Open the Main port explicitly:
+  OneWili(port_name).open() (device.py:18, 33-35).
+- The port string is taken the way OneWili._port_path does (__init__.py:82-87):
+  the first truthy value among port, path, port_name, location. The interface
+  itself must be Main CDC VID 0x093C PID 0x2054 (freewili-finder usbdef.hpp
+  USB_PID_FW_MAIN_CDC_PID). Display 0x093C:0x2055 is not opened.
+  Espressif USB JTAG/serial debug unit 0x303a:0x1001 is not a FreeWili.
+- Transport.open() uses BAUD_RATE = 1_000_000 (transport.py:10, 131). This
+  file does not open a serial port and does not pass a baud rate.
+- dev.hardware.power_management.set_zone(zone, on) (power_management.py:45-61).
+  Zone 1 is Sensors. Zone 3 is Audio. docs/errors.md: EPOWERZONE means the
+  zone was off.
+- dev.io.sensors.enable_motion_stream(stream_rate_ms) (sensors.py:23-38).
+  0 stops the stream. The motion event payload is ax_mg, ay_mg, az_mg,
+  gx_ddps, gy_ddps, gz_ddps (sensors.py:16-17). ax/ay/az are milli-g.
+  Gyro fields are ignored. Frames are ResponseFrame (framing.py:41-62);
+  path '*motion' and response is the space-separated payload.
+- Events arrive on dev._transport.events (transport.py:116). OneWili has no
+  public events property. MenuBase._call flushes that queue before every
+  command (menubase.py:21, transport.py:162-168), so a command during the
+  stream drops queued samples. The drain thread only reads the queue.
+- dev.io.audio.tone(frequency, duration_ms, amplitude) (audio.py:131-148).
+  Duration is milliseconds. played is true only when that Result is Ok.
+- OneWili at this commit has no firmware-version or app-info call.
+  hardware.system.device_state is not a version. display_bl_version is not
+  called. pyfwfinder FreeWiliDevice.name / USBDevice.name (pyfwfinder 0.6.0
+  stub) is the USB product string, not an OneWili version.
+- There is no IP open. FREEWILI_HOST is not a connection.
 """
 
 import math
+import queue
+import threading
 import time
 
-# Named in freewili-finder v0.5.0 include/usbdef.hpp. One board can expose all of these.
-NAMED_USB_IDS = (
-    (0x0403, 0x6014),  # USB_VID_FW_FTDI, USB_PID_FW_FTDI
-    (0x093C, 0x2054),  # USB_VID_FW_ICS, USB_PID_FW_MAIN_CDC_PID
-    (0x093C, 0x2055),  # USB_VID_FW_ICS, USB_PID_FW_DISPLAY_CDC_PID
-)
-# Espressif USB JTAG/serial debug unit. Not a FreeWili accelerometer port.
+ONEWILI_COMMIT = "b0eeccda21b0594c8062cd17e9755f0c26b0cf6b"
+# freewili-finder USB_PID_FW_MAIN_CDC_PID / USB_PID_FW_DISPLAY_CDC_PID.
+MAIN_CDC_ID = (0x093C, 0x2054)
+DISPLAY_CDC_ID = (0x093C, 0x2055)
+FTDI_ID = (0x0403, 0x6014)
+NAMED_USB_IDS = (FTDI_ID, MAIN_CDC_ID, DISPLAY_CDC_ID)
+# Espressif USB JTAG/serial debug unit. Not a FreeWili.
 ESPRESSIF_DEBUG_ID = (0x303A, 0x1001)
-TONE_FAILURE_NOTE = "v54 firmware: Response frame always returns failure"
+LISTEN_NOTE = "Listen for the tone."
 INSTALL_COMMAND = "python3 -m pip install -r bridge/requirements.txt"
+# set_zone and tone each wait up to Transport.DEFAULT_TIMEOUT (5 s).
+COMMAND_WAIT_SEC = 12
 
 
 class LibraryMissing(Exception):
     def __init__(self):
         super().__init__(
-            "The freewili package is not installed, so this process cannot open a FreeWili.\n"
+            "The onewili package is not installed, so this process cannot open a FreeWili.\n"
             "Install it with:\n"
             f"  {INSTALL_COMMAND}"
         )
@@ -97,7 +84,7 @@ def usb_id(usb):
 
 
 def has_named_usb(device):
-    """True when one interface is FTDI 0x0403:0x6014 or Intrepid CDC 0x093C:0x2054 or 0x093C:0x2055.
+    """True when one interface is FTDI 0x0403:0x6014 or CDC 0x093C:0x2054 or 0x093C:0x2055.
 
     VID 0x303a PID 0x1001 is ignored. That Espressif debug port is not a FreeWili.
     """
@@ -134,7 +121,7 @@ def requested_serial(serial):
 
 
 def board_identity(device):
-    """Serial the library reports for the board. Used as deviceId after open()."""
+    """Serial the finder reports for the board. Used as deviceId after open()."""
     inner = getattr(device, "device", None)
     for obj in (inner, device):
         if obj is None:
@@ -147,12 +134,12 @@ def board_identity(device):
 
 
 def select_device(devices, serial):
-    """Pick one FreeWili from find_all() that has a named USB interface.
+    """Pick one FreeWili from pyfwfinder.find_all() that has a named USB interface.
 
-    One board is used even when its serial is not the filter. FREEWILI_SERIAL
+    One board is used even when its serial is not a filter. FREEWILI_SERIAL
     filters when it is set, and it is required when more than one board is present.
     Several boards and an empty filter select nothing. An Espressif debug port
-    does not count as a board.
+    does not count as a board. Selection does not open a port.
     """
     wanted = requested_serial(serial)
     class_devices = [device for device in devices if has_named_usb(device)]
@@ -186,6 +173,104 @@ def describe_missing(devices, serial):
     return "FreeWili not found"
 
 
+def port_path(usb):
+    """Same attribute order as OneWili._port_path (__init__.py:82-87)."""
+    for attr in ("port", "path", "port_name", "location"):
+        value = getattr(usb, attr, None)
+        if value:
+            return str(value)
+    return None
+
+
+def main_cdc_port(device):
+    """Port path for the single Main CDC interface 0x093C:0x2054.
+
+    Display 0x093C:0x2055 is never returned. A missing or duplicate Main
+    interface returns None.
+    """
+    matches = []
+    for usb in getattr(device, "usb_devices", None) or []:
+        if usb_id(usb) == MAIN_CDC_ID:
+            matches.append(usb)
+    if len(matches) != 1:
+        return None
+    return port_path(matches[0])
+
+
+def main_product_name(device):
+    for usb in getattr(device, "usb_devices", None) or []:
+        if usb_id(usb) == MAIN_CDC_ID:
+            name = getattr(usb, "name", None)
+            if isinstance(name, str) and name:
+                return name
+    name = getattr(device, "name", None)
+    return name if isinstance(name, str) and name else ""
+
+
+def describe_no_main(device):
+    label = board_identity(device) or "FreeWili"
+    return (
+        f"FreeWili {label} has no Main CDC port 0x093c:0x2054. "
+        "Display 0x093c:0x2055 is not opened."
+    )
+
+
+class OpenedBoard:
+    """One opened OneWili on the Main CDC port. close() releases that port."""
+
+    def __init__(self, onewili, serial, port, product_name):
+        self.onewili = onewili
+        self.serial = serial
+        self.port = port
+        self.product_name = product_name
+        self.device = type("Inner", (), {"serial": serial})()
+
+    def close(self):
+        self.onewili.close()
+
+
+def open_main_port(port, onewili_cls):
+    """Construct OneWili(port) and call open() with no baud argument.
+
+    Transport.open uses 1_000_000 baud. This function passes no baud rate.
+    """
+    if not isinstance(port, str) or not port:
+        return None
+    device = onewili_cls(port)
+    device.open()
+    return device
+
+
+def open_usb(serial):
+    """Return an OpenedBoard, or None when no Main CDC port is selected.
+
+    transport freewili is allowed only after this returns a board. Display is
+    not opened. This function does not scan raw serial-port names.
+    """
+    try:
+        import pyfwfinder
+        from onewili import OneWili
+    except ImportError as ex:
+        raise LibraryMissing() from ex
+    devices = pyfwfinder.find_all()
+    chosen = select_device(devices, serial)
+    if chosen is None:
+        print(describe_missing(devices, serial), flush=True)
+        return None
+    port = main_cdc_port(chosen)
+    if port is None:
+        print(describe_no_main(chosen), flush=True)
+        return None
+    label = board_identity(chosen) or "FreeWili"
+    try:
+        onewili = open_main_port(port, OneWili)
+    except Exception as ex:
+        print(f"FreeWili {label} did not open Main port {port}: {ex}", flush=True)
+        return None
+    print(f"Opened Main CDC 0x093c:0x2054 at {port} for {label}.", flush=True)
+    return OpenedBoard(onewili, board_identity(chosen), port, main_product_name(chosen))
+
+
 def hello_message(serial, timestamp):
     """Coach hello. None unless a serial was actually opened. Never used for the stand-in."""
     if not isinstance(serial, str) or not serial:
@@ -199,32 +284,46 @@ def hello_message(serial, timestamp):
     }
 
 
-def axes_from_accel_data(data):
-    """Copy AccelData.x, y, z, and g when g is present. No unit conversion."""
-    x = getattr(data, "x", None)
-    y = getattr(data, "y", None)
-    z = getattr(data, "z", None)
-    if not _finite(x) or not _finite(y) or not _finite(z):
+def motion_axes(frame):
+    """x, y, z in milli-g from a *motion frame. Gyro fields are dropped.
+
+    ResponseFrame.response is the payload after the sequence (framing.py:56-60).
+    sensors.py lists ax_mg, ay_mg, az_mg first. Values are not scaled.
+    """
+    if getattr(frame, "path", None) != "*motion":
         return None
-    sample = {"x": x, "y": y, "z": z}
-    g = getattr(data, "g", None)
-    if _finite(g):
-        sample["g"] = g
-    return sample
+    response = getattr(frame, "response", None)
+    if not isinstance(response, str):
+        return None
+    parts = response.split()
+    if len(parts) < 3:
+        return None
+    try:
+        x = int(parts[0])
+        y = int(parts[1])
+        z = int(parts[2])
+    except ValueError:
+        return None
+    return {"x": x, "y": y, "z": z}
 
 
 def _finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def response_frame_timeout(text):
-    """True for the library's response-frame timeout string."""
-    return isinstance(text, str) and "Failed to read response frame" in text
-
-
 def result_is_err(result):
     is_err = getattr(result, "is_err", None)
     return bool(callable(is_err) and is_err())
+
+
+def result_is_ok(result):
+    is_ok = getattr(result, "is_ok", None)
+    if callable(is_ok):
+        return bool(is_ok())
+    is_err = getattr(result, "is_err", None)
+    if callable(is_err):
+        return not is_err()
+    return False
 
 
 def result_err_text(result):
@@ -235,148 +334,122 @@ def result_err_text(result):
     return text if isinstance(text, str) else str(text)
 
 
-def play_pulse(device, frequency_hz, duration_ms, amplitude, processors):
-    """Call play_audio_tone. Duration in the protocol is milliseconds; the API takes seconds.
+def result_ok_text(result):
+    ok = getattr(result, "ok", None)
+    if not callable(ok):
+        return result
+    return ok()
 
-    Display is first. A response-frame timeout tries the next processor.
-    The v54 response frame is unreliable, so played stays false. This does not
-    report that a tone was heard.
+
+def log_command(label, result):
+    """Print Ok, or Err. An EPOWERZONE failure is logged on its own line."""
+    if result_is_err(result):
+        err = result_err_text(result)
+        if "EPOWERZONE" in err:
+            print(f"EPOWERZONE from {label}: {err}", flush=True)
+        else:
+            print(f"{label}: Err: {err}", flush=True)
+        return False
+    print(f"{label}: Ok: {result_ok_text(result)}", flush=True)
+    return True
+
+
+def onewili_of(device):
+    return getattr(device, "onewili", device)
+
+
+def start_motion(device, interval_ms):
+    """Turn on Sensors zone 1, then enable_motion_stream. Returns whether the stream call was Ok."""
+    dev = onewili_of(device)
+    zone = dev.hardware.power_management.set_zone(1, 1)
+    log_command("set_zone(1, 1) Sensors", zone)
+    result = dev.io.sensors.enable_motion_stream(int(interval_ms))
+    return log_command(f"enable_motion_stream({int(interval_ms)})", result)
+
+
+def stop_motion(device):
+    dev = onewili_of(device)
+    try:
+        result = dev.io.sensors.enable_motion_stream(0)
+    except Exception as ex:
+        print(f"enable_motion_stream(0) raised {ex}", flush=True)
+        return
+    log_command("enable_motion_stream(0)", result)
+
+
+def play_pulse(device, frequency_hz, duration_ms, amplitude):
+    """Turn on Audio zone 3, then tone(frequency, duration_ms, amplitude).
+
+    Duration stays in milliseconds. played is true only when tone returns Ok.
+    set_zone and tone each call flush_queues(), so samples queued during a
+    buzz are dropped. The note asks the user to listen either way.
     """
-    duration_sec = float(duration_ms) / 1000.0
-    frequency = int(frequency_hz)
+    dev = onewili_of(device)
+    frequency = float(frequency_hz)
+    duration = float(duration_ms)
     level = float(amplitude)
-    for index, processor in enumerate(processors):
-        name = getattr(processor, "name", str(processor))
-        try:
-            result = device.play_audio_tone(frequency, duration_sec, level, processor)
-        except Exception as ex:
-            print(f"play_audio_tone {name} raised {ex}", flush=True)
-            if index == 0 and response_frame_timeout(str(ex)):
-                continue
-            break
-        if result_is_err(result):
-            err = result_err_text(result)
-            print(f"play_audio_tone {name}: Err: {err}", flush=True)
-            if index == 0 and response_frame_timeout(err):
-                continue
-            break
-        ok = getattr(result, "ok", None)
-        value = ok() if callable(ok) else result
-        print(f"play_audio_tone {name}: Ok: {value}", flush=True)
-        break
-    return {"played": False, "note": TONE_FAILURE_NOTE}
+    try:
+        zone = dev.hardware.power_management.set_zone(3, 1)
+    except Exception as ex:
+        print(f"set_zone(3, 1) Audio raised {ex}", flush=True)
+        return {"played": False, "note": f"{ex} {LISTEN_NOTE}"}
+    log_command("set_zone(3, 1) Audio", zone)
+    try:
+        result = dev.io.audio.tone(frequency, duration, level)
+    except Exception as ex:
+        print(f"tone raised {ex}", flush=True)
+        return {"played": False, "note": f"{ex} {LISTEN_NOTE}"}
+    ok = log_command(f"tone({frequency}, {duration}, {level})", result)
+    if ok:
+        return {"played": True, "note": LISTEN_NOTE}
+    err = result_err_text(result)
+    note = f"{err} {LISTEN_NOTE}" if err else LISTEN_NOTE
+    return {"played": False, "note": note}
 
 
 def sample_window_lines(received, sent, enabled):
-    """One 5 second USB window. enabled means enable_accel_events returned Ok."""
+    """One 5 second window. enabled means enable_motion_stream returned Ok."""
     lines = [f"accel samples in 5s: received {received}, sent {sent}"]
     if enabled and received == 0:
         lines.append("The board accepted the command but sent no accelerometer samples.")
     return lines
 
 
-def network_target(_host):
-    """freewili 0.0.51 has no IP open. A Wi-Fi address is not a target."""
-    return None
-
-
-def ignored_host_message(host):
-    if not isinstance(host, str) or not host.strip():
-        return None
-    shown = host.strip()
-    return (
-        f"FREEWILI_HOST={shown} is unused. "
-        "freewili 0.0.51 opens boards with FreeWili.find_all() and FreeWili.open(), "
-        "which attach to USB serial ports and take no IP address. "
-        "The bridge stays on USB."
-    )
-
-
-def open_usb(serial):
-    """Return an opened FreeWili, or None when no single board is selected.
-
-    transport freewili is allowed only after this returns a device. open() uses the
-    library's main and display serial ports. This function does not scan port names.
-    """
-    try:
-        from freewili import FreeWili
-    except ImportError as ex:
-        raise LibraryMissing() from ex
-    devices = FreeWili.find_all()
-    chosen = select_device(devices, serial)
-    if chosen is None:
-        print(describe_missing(devices, serial), flush=True)
-        return None
-    opened = chosen.open()
-    label = board_identity(chosen) or requested_serial(serial) or "FreeWili"
-    if opened.is_err():
-        print(f"FreeWili {label} did not open: {opened.err()}", flush=True)
-        _close_quiet(chosen)
-        return None
-    if chosen.main_serial is None and chosen.display_serial is None:
-        print(f"FreeWili {label} did not open a serial port.", flush=True)
-        _close_quiet(chosen)
-        return None
-    return chosen
-
-
-def start_accel_events(device, interval_ms, processors):
-    """Call enable_accel_events until one processor returns Ok.
-
-    processors are FreeWiliProcessorType values. Display is first, then Main.
-    The Result methods is_err() and err() are the ones fw.py uses. A timeout
-    string from err() is a failure of that processor. Samples are not invented here.
-    """
-    interval = int(interval_ms)
-    for processor in processors:
-        name = getattr(processor, "name", str(processor))
-        result = device.enable_accel_events(True, interval, processor)
-        if result.is_err():
-            print(f"enable_accel_events {name} failed: {result.err()}", flush=True)
+def drain_motion(device, samples, stop_event):
+    """Move *motion frames off Transport.events. Does not send commands."""
+    events = onewili_of(device)._transport.events
+    while not stop_event.is_set():
+        try:
+            frame = events.get(timeout=0.2)
+        except queue.Empty:
             continue
-        print(f"enable_accel_events Ok on {name}", flush=True)
-        return processor
-    print("enable_accel_events failed on Display and Main", flush=True)
-    return None
-
-
-def run_device(device, samples, commands, stop_event, failed, interval_ms):
-    """Read AccelData on this thread. samples.push must not send on the WebSocket."""
-    from freewili.types import AccelData, EventType
-
-    def callback(event_type, frame, data):
-        if event_type != EventType.Accel or not isinstance(data, AccelData):
-            return
-        sample = axes_from_accel_data(data)
+        sample = motion_axes(frame)
         if sample is not None:
             samples.push(sample)
 
-    from freewili.types import FreeWiliProcessorType
 
-    enabled_on = None
+def run_device(device, samples, commands, stop_event, failed, interval_ms):
+    """Stream motion on a drain thread. Buzz commands run on this thread.
+
+    A buzz calls set_zone and tone, and each of those clears Transport.events.
+    Samples waiting in that queue are dropped. The drain thread does not send
+    commands.
+    """
+    reader_stop = threading.Event()
+    reader = threading.Thread(target=drain_motion, args=(device, samples, reader_stop), daemon=True)
+    enabled = False
     try:
-        device.set_event_callback(callback)
-        enabled_on = start_accel_events(
-            device,
-            interval_ms,
-            (FreeWiliProcessorType.Display, FreeWiliProcessorType.Main),
-        )
+        reader.start()
+        enabled = start_motion(device, interval_ms)
         window_started = time.monotonic()
         while not stop_event.is_set() and not failed.is_set():
             command = _next_command(commands)
             if command is not None:
-                pulse = play_pulse(
-                    device,
-                    command["frequency"],
-                    command["duration"],
-                    command["amplitude"],
-                    (FreeWiliProcessorType.Display, FreeWiliProcessorType.Main),
-                )
+                pulse = play_pulse(device, command["frequency"], command["duration"], command["amplitude"])
                 command["reply"].put(pulse)
-            device.process_events()
             if time.monotonic() - window_started >= 5:
                 received, sent = samples.take_counts()
-                for line in sample_window_lines(received, sent, enabled_on is not None):
+                for line in sample_window_lines(received, sent, enabled):
                     print(line, flush=True)
                 window_started = time.monotonic()
             stop_event.wait(0.005)
@@ -384,15 +457,9 @@ def run_device(device, samples, commands, stop_event, failed, interval_ms):
         print(f"FreeWili read failed: {ex}", flush=True)
         failed.set()
     finally:
-        if enabled_on is not None:
-            try:
-                device.enable_accel_events(False, None, enabled_on)
-            except Exception:
-                pass
-        try:
-            device.set_event_callback(None)
-        except Exception:
-            pass
+        reader_stop.set()
+        reader.join(timeout=1)
+        stop_motion(device)
 
 
 def _next_command(commands):
@@ -402,8 +469,17 @@ def _next_command(commands):
         return None
 
 
-def _close_quiet(device):
-    try:
-        device.close()
-    except Exception:
-        pass
+def network_target(_host):
+    """OneWili(port).open() takes no IP address."""
+    return None
+
+
+def ignored_host_message(host):
+    if not isinstance(host, str) or not host.strip():
+        return None
+    shown = host.strip()
+    return (
+        f"FREEWILI_HOST={shown} is unused. "
+        "OneWili opens the Main CDC serial port with OneWili(port).open() and takes no IP address. "
+        "The bridge stays on USB."
+    )

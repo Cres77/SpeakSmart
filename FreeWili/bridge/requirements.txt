@@ -1,5 +1,7 @@
-# Host library that enumerates USB FreeWilis and reads AccelData.
-# Verified from PyPI: freewili 0.0.51 (requires Python >=3.10) depends on pyfwfinder==0.5.0.
-# Docs: https://freewili.github.io/freewili-python/
-freewili==0.0.51
-pyfwfinder==0.5.0
+# OneWili is not on PyPI. This pin is commit b0eeccda21b0594c8062cd17e9755f0c26b0cf6b
+# (2026-09-28, "Regenerate for ESP32 Mode, peer streams and ISO-TP").
+# Install from FreeWili/: python3 -m pip install -r bridge/requirements.txt
+onewili @ git+https://github.com/freewili/onewili.git@b0eeccda21b0594c8062cd17e9755f0c26b0cf6b#subdirectory=python
+pyfwfinder==0.6.0
+pyserial==3.5
+result==0.17.0

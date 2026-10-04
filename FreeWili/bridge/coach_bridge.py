@@ -18,9 +18,10 @@ import hashlib
 from pathlib import Path
 
 from freewili_usb import (
+    COMMAND_WAIT_SEC,
     INSTALL_COMMAND,
+    LISTEN_NOTE,
     LibraryMissing,
-    TONE_FAILURE_NOTE,
     board_identity,
     hello_message,
     ignored_host_message,
@@ -244,7 +245,7 @@ def buzz_ack(message, pulse, timestamp):
         "played": False if pulse is None else pulse["played"],
         "timestamp": timestamp,
     }
-    note = TONE_FAILURE_NOTE if pulse is None else pulse.get("note")
+    note = f"The command did not return before the wait ended. {LISTEN_NOTE}" if pulse is None else pulse.get("note")
     if isinstance(note, str) and note:
         ack["note"] = note
     return ack
@@ -274,7 +275,7 @@ def serve_link(host, port, serial, samples, commands, stop_event, failed, config
                             "reply": reply,
                         })
                         try:
-                            pulse = reply.get(timeout=2)
+                            pulse = reply.get(timeout=COMMAND_WAIT_SEC)
                         except queue.Empty:
                             pulse = None
                         ws.send_text(json.dumps(buzz_ack(message, pulse, now_ms())))

@@ -65,7 +65,7 @@ test("a hello for serial FW4923 is labeled freewili and passes axes through", as
     assert.equal(connected.deviceId, "FW4923");
     const sample = await waitFor(socket, (message) => message.type === "sensor");
     assert.equal(sample.transport, "freewili");
-    assert.deepEqual(sample.accel, { x: 64, y: -768, z: 16448, g: 2 });
+    assert.deepEqual(sample.accel, { x: 12, y: -34, z: 1002 });
     const ackWait = waitFor(socket, (message) => message.type === "buzz");
     socket.send(JSON.stringify({
       type: "buzz",
@@ -76,9 +76,10 @@ test("a hello for serial FW4923 is labeled freewili and passes axes through", as
       timestamp: Date.now(),
     }));
     const ack = await ackWait;
-    assert.equal(ack.played, false);
-    assert.equal(ack.note, "v54 firmware: Response frame always returns failure");
-    assert.match(logs, /TONE 350 0\.15 0\.2/);
+    assert.equal(ack.played, true);
+    assert.equal(ack.note, "Listen for the tone.");
+    assert.match(logs, /TONE 350\.0 150\.0 0\.2/);
+    assert.match(logs, /ZONE 3 1/);
     socket.close();
   } finally {
     child.kill("SIGTERM");
@@ -105,15 +106,29 @@ def answer():
             command = commands.get(timeout=0.1)
         except queue.Empty:
             continue
-        class Processor:
-            name = "Display"
+        class Result:
+            def is_ok(self):
+                return True
+            def is_err(self):
+                return False
+            def ok(self):
+                return None
+        class Power:
+            def set_zone(self, zone, on):
+                print(f"ZONE {zone} {on}", flush=True)
+                return Result()
+        class Audio:
+            def tone(self, frequency, duration_ms, amplitude):
+                print(f"TONE {frequency} {duration_ms} {amplitude}", flush=True)
+                return Result()
         class Fake:
-            def play_audio_tone(self, frequency_hz, duration_sec, amplitude, processor):
-                print(f"TONE {frequency_hz} {duration_sec} {amplitude}", flush=True)
-        command["reply"].put(play_pulse(Fake(), command["frequency"], command["duration"], command["amplitude"], (Processor(),)))
+            def __init__(self):
+                self.hardware = type("H", (), {"power_management": Power()})()
+                self.io = type("I", (), {"audio": Audio()})()
+        command["reply"].put(play_pulse(Fake(), command["frequency"], command["duration"], command["amplitude"]))
 
 threading.Thread(target=answer, daemon=True).start()
-threading.Thread(target=lambda: (time.sleep(0.2), samples.push({"x": 64, "y": -768, "z": 16448, "g": 2})), daemon=True).start()
+threading.Thread(target=lambda: (time.sleep(0.2), samples.push({"x": 12, "y": -34, "z": 1002})), daemon=True).start()
 serve_link("127.0.0.1", ${port}, "FW4923", samples, commands, stop, failed, {"heartbeatIntervalMs": 2000, "sampleRateHz": 50})
 `;
 }

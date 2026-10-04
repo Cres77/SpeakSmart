@@ -481,6 +481,20 @@ test("a buzz note is forwarded and played stays false", async () => {
     const ack = await ackWait;
     assert.equal(ack.played, false);
     assert.equal(ack.note, "v54 firmware: Response frame always returns failure");
+    const okWait = waitFor(page.socket, (message) => message.type === "buzz" && message.played === true);
+    coach.send(JSON.stringify({
+      type: "buzz",
+      role: "device",
+      frequency: 350,
+      duration: 150,
+      amplitude: 0.2,
+      played: true,
+      note: "Listen for the tone.",
+      timestamp: 1710000009300,
+    }));
+    const okAck = await okWait;
+    assert.equal(okAck.played, true);
+    assert.equal(okAck.note, "Listen for the tone.");
     page.socket.close();
     coach.close();
   } finally {

@@ -121,17 +121,17 @@ test("automatic movement feedback sends one buzz when the hold completes and ign
   });
   assert.equal(ack.ok, true);
   assert.equal(first.sent[0].played, false);
-  const refused = inspectClientMessage({
+  const accepted = inspectClientMessage({
     type: "buzz",
     role: "device",
     frequency: 440,
     duration: 200,
     amplitude: 0.3,
     played: true,
+    note: "Listen for the tone.",
     timestamp: 1000,
   });
-  assert.equal(refused.ok, false);
-  assert.equal(refused.code, "invalid");
+  assert.equal(accepted.ok, true);
 });
 
 test("a pulse still running blocks an automatic buzz without starting its cooldown", () => {

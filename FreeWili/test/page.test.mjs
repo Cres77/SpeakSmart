@@ -36,7 +36,7 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /id="calibrate"/);
   assert.match(html, /Hold still/);
   assert.match(script, /CALIBRATION_STORAGE_KEY/);
-  assert.match(html, /Units unknown/);
+  assert.match(html, /milli-g/);
   assert.match(html, /Dashboard/);
   for (const label of ["Presentation", "Practice", "Analytics", "Settings"]) {
     assert.match(html, new RegExp(label));
@@ -71,7 +71,9 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /id="buzz-cue"/);
   assert.doesNotMatch(html, /id="buzz-cue"[^>]*checked/);
   assert.match(script, /createSlideCues/);
-  assert.match(script, /Command sent to the FreeWili\. The board does not confirm playback; listen for the tone\./);
-  assert.match(script, /Cue sent\. Command sent to the FreeWili\. The board does not confirm playback; listen for the tone\./);
+  assert.match(script, /Command returned OK\./);
+  assert.match(script, /Command did not return OK\./);
+  assert.match(script, /Listen for the tone\./);
+  assert.match(script, /FreeWili sample, milli-g\./);
   assert.doesNotMatch(script, /No tone was played/);
 });
