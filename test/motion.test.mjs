@@ -86,7 +86,7 @@ test("a sustained crossing of the gesture threshold counts once", () => {
   assert.equal(result.gestures.length, 1);
   assert.equal(result.gestures[0].timestamp >= span.start, true);
   assert.ok(result.gestures[0].magnitude >= config.gestureThreshold);
-  assert.equal(result.last.state, "Excessive");
+  assert.equal(result.last.state, "Gesturing");
   assert.equal(result.excessive.length, 0);
 });
 
@@ -181,18 +181,45 @@ test("a constant vector after the baseline settles is Still and adds no gestures
   assert.ok(result.trace.every((sample) => sample.magnitude < config.stillnessThreshold));
 });
 
-test("Excessive wins when a sample is both gesturing and excessive", () => {
+test("a gesture-sized magnitude reads Gesturing until the excessive hold completes", () => {
   const detector = createMotionDetector(config);
-  const both = detector.push({ timestamp: 1000, magnitude: config.gestureThreshold, movement: config.excessiveLevel });
-  assert.equal(both.state, "Excessive");
-  detector.reset();
-  const gesturing = detector.push({
-    timestamp: 1000,
+  const early = detector.push({
+    timestamp: 0,
+    magnitude: config.gestureThreshold,
+    movement: 1,
+  });
+  assert.equal(early.state, "Gesturing");
+  assert.equal(early.excessive, 0);
+  const before = detector.push({
+    timestamp: config.excessiveHoldMs - 1,
+    magnitude: config.gestureThreshold,
+    movement: 1,
+  });
+  assert.equal(before.state, "Gesturing");
+  assert.equal(before.excessive, 0);
+  const held = detector.push({
+    timestamp: config.excessiveHoldMs,
+    magnitude: config.gestureThreshold,
+    movement: 1,
+  });
+  assert.equal(held.state, "Excessive");
+  assert.equal(held.excessive, 1);
+  const dropped = detector.push({
+    timestamp: config.excessiveHoldMs + 20,
     magnitude: config.gestureThreshold,
     movement: config.excessiveLevel - 0.01,
   });
-  assert.equal(gesturing.state, "Gesturing");
-  const still = detector.push({ timestamp: 1020, magnitude: 0, movement: 0 });
+  assert.equal(dropped.state, "Gesturing");
+  const still = detector.push({
+    timestamp: config.excessiveHoldMs + 40,
+    magnitude: 0,
+    movement: 0,
+  });
   assert.equal(still.state, "Still");
-  assert.equal(still.stillnessPercent, 0.5);
+  const moving = detector.push({
+    timestamp: config.excessiveHoldMs + 60,
+    magnitude: config.stillnessThreshold,
+    movement: 0.2,
+  });
+  assert.equal(moving.state, "Moving");
 });

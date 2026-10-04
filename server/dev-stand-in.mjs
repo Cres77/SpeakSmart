@@ -62,6 +62,18 @@ function connect() {
     } catch {
       return;
     }
+    if (message.type === "buzz" && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "buzz",
+        role: "device",
+        frequency: message.frequency,
+        duration: message.duration,
+        amplitude: message.amplitude,
+        played: false,
+        timestamp: Date.now(),
+      }));
+      return;
+    }
     if (message.type !== "reconnect" || ws.readyState !== WebSocket.OPEN) return;
     reconnecting = true;
     ws.send(JSON.stringify(deviceDisconnect({ deviceId, reason: "reconnect" })));

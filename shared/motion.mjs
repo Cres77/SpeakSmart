@@ -39,11 +39,9 @@ export function createMotionDetector(config) {
     };
   }
 
-  function classify(magnitude, movement) {
-    const excessive = movement >= excessiveLevel;
-    const gesturing = magnitude >= gestureThreshold;
-    if (excessive) return "Excessive";
-    if (gesturing) return "Gesturing";
+  function classify(magnitude) {
+    if (excessiveMode === "latched") return "Excessive";
+    if (magnitude >= gestureThreshold) return "Gesturing";
     if (magnitude < stillnessThreshold) return "Still";
     return "Moving";
   }
@@ -127,7 +125,7 @@ export function createMotionDetector(config) {
       if (magnitude < stillnessThreshold) stillSamples += 1;
       const gestureEvent = noteGesture(timestamp, magnitude);
       const excessiveEvent = noteExcessive(timestamp, movement);
-      state = classify(magnitude, movement);
+      state = classify(magnitude);
       return snapshot(gestureEvent, excessiveEvent);
     },
   };

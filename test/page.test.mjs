@@ -16,7 +16,11 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /id="practice-start"/);
   assert.match(script, /SESSION_STORAGE_KEY/);
   assert.match(html, /id="nav-analytics" disabled/);
-  assert.match(html, /id="nav-settings" disabled/);
+  assert.match(html, /id="nav-settings"/);
+  assert.doesNotMatch(html, /id="nav-settings"[^>]*disabled/);
+  assert.match(html, /id="buzz-send"/);
+  assert.match(html, /id="buzz-test"/);
+  assert.match(html, /id="buzz-frequency"/);
   assert.match(html, /id="present-start"/);
   assert.match(html, /id="present-end"/);
   assert.match(script, /DECK_STORAGE_KEY/);
@@ -51,5 +55,6 @@ test("page shows the coach link and accelerometer axes", () => {
   assert.match(script, /text: "Intensity"/);
   assert.match(script, /series\.push\(message\.timestamp, message\.movement\)/);
   assert.doesNotMatch(html, /<svg/);
-  assert.doesNotMatch(html, /buzz/i);
+  assert.match(script, /BUZZ_STORAGE_KEY/);
+  assert.match(script, /createBuzzGuard/);
 });

@@ -129,7 +129,7 @@ A new coach `hello` starts a new baseline. Disconnecting clears it.
 
 The page plots `movement` as 0–100% against the sample timestamp. It does not plot X, Y, or Z. Chart.js draws the line. The trace is not a server message.
 
-Gesture, stillness, and excessive movement use the same forwarded sample. They read `shared/config.json`. A gesture candidate begins when `magnitude` reaches `gestureThreshold` (1.2) and counts once if it stays there for `gestureMinDurationMs` (200). After that gesture ends, new candidates wait `gestureCooldownMs` (400). A sample is still when `magnitude` is below `stillnessThreshold` (0.08). Excessive movement begins when `movement` stays at or above `excessiveLevel` (0.75) for `excessiveHoldMs` (1000), then waits `excessiveCooldownMs` (3000) before another episode can count. The page does not send buzz, play a tone, or write a coaching sentence.
+Gesture, stillness, and excessive movement use the same forwarded sample. They read `shared/config.json`. A gesture candidate begins when `magnitude` reaches `gestureThreshold` (1.2) and counts once if it stays there for `gestureMinDurationMs` (200). After that gesture ends, new candidates wait `gestureCooldownMs` (400). A sample is still when `magnitude` is below `stillnessThreshold` (0.08). Excessive movement begins when `movement` stays at or above `excessiveLevel` (0.75) for `excessiveHoldMs` (1000), then waits `excessiveCooldownMs` (3000) before another episode can count. The page can send one manual buzz. It does not play a tone or write a coaching sentence.
 
 Downsample and window, in `shared/intensity-series.mjs`:
 
@@ -168,25 +168,35 @@ Downsample and window, in `shared/intensity-series.mjs`:
 
 `code` is `reserved`, `invalid`, or `unknown`.
 
-## Reserved — not executed
+## Implemented — manual buzz
 
-`buzz` is still rejected with `error` / `code: "reserved"`. The server does not play a tone. The firmware recognizes `buzz` only so a stray frame cannot be mistaken for a sample, and it does not play a tone.
+`buzz` is a manual command. The website sends it, the server forwards it to the coach, and the coach replies. Nothing plays a tone. There is no automatic threshold buzz.
 
-### `buzz` (website → coach), phases 8–9
+### `buzz` (website → server → coach)
 
 ```json
-{ "type": "buzz", "frequency": 350, "duration": 150 }
+{ "type": "buzz", "frequency": 350, "duration": 150, "amplitude": 0.2, "timestamp": 1710000009000 }
 ```
 
-`frequency` is hertz and `duration` is milliseconds. Defaults live in `shared/config.json`: 350 Hz, 150 ms, amplitude 0.2, cooldown 2000 ms. Amplitude is the fwwasm recommended level for a later call, not a measured speaker setting. This phase does not play sound.
+`frequency` is hertz, from 50 to 2000. `duration` is milliseconds, greater than 0 and at most 500. `amplitude` is the requested level. Defaults in `shared/config.json` are 350 Hz, 150 ms, and 0.2. A non-positive duration, a duration above 500 ms, or a frequency outside 50–2000 Hz is rejected with `error` / `code: "invalid"` and is not forwarded.
 
-Two verified tone APIs use different duration units. Do not mix them:
+The website role is `browser`. A second click while that pulse’s duration has not elapsed is ignored on the page, so the command cannot become a continuous tone.
 
-- OneWili `dev.io.audio.tone(frequency: float, duration_ms: float, amplitude: float)` — duration in milliseconds.
-- WASM `playSoundFromFrequencyAndDuration(float frequency, float duration, float amplitude, audioWaveType wavetype)` — duration in seconds.
+### `buzz` acknowledgement (coach → server → website)
 
-Neither documents a frequency range, so 300–400 Hz is expressible and not confirmed audible.
+```json
+{ "type": "buzz", "role": "device", "frequency": 350, "duration": 150, "amplitude": 0.2, "played": false, "timestamp": 1710000009100 }
+```
+
+The acknowledgement repeats the requested frequency, duration, and amplitude. `played` is false. The development stand-in does not set `played` to true. The server forwards `played: false`. The host firmware function `buzz` does not call a speaker and does not return success.
+
+Two verified tone APIs use different duration units. Do not mix them, and do not call them from the host build:
+
+- OneWili `dev.io.audio.tone(frequency, duration_ms, amplitude)` — duration in milliseconds.
+- WASM `playSoundFromFrequencyAndDuration(frequency, duration_seconds, amplitude, wavetype)` — duration in seconds.
+
+No separate buzzer API exists. Automatic buzz remains a later phase.
 
 ## Limits
 
-Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. The server adds intensity on the sample it forwards to the browser. The page draws that intensity. Slideshow decks are kept in the browser under localStorage key `speaksmart.decks`. Practice sessions are a separate key, `speaksmart.sessions`. They are not coach messages. A session stores the start time, duration, downsampled samples, and slide changes. During a practice, `gestures` and `excessive` store only the events those rules recorded in that practice: a timestamp, and the magnitude or movement score that met the rule. `buzzes` stays empty. There is no calibration or coaching summary. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it. Sampling still does no network I/O. The radio poll still sends at most one queued sample on a non-blocking link.
+Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. The server adds intensity on the sample it forwards to the browser. The page draws that intensity. Slideshow decks are kept in the browser under localStorage key `speaksmart.decks`. Practice sessions are a separate key, `speaksmart.sessions`. They are not coach messages. A session stores the start time, duration, downsampled samples, and slide changes. During a practice, `gestures` and `excessive` store only the events those rules recorded in that practice: a timestamp, and the magnitude or movement score that met the rule. If a buzz command is sent during that practice, `buzzes` stores `{ timestamp, frequency, duration, amplitude, played: false }`. There is no calibration or coaching summary. The live label is Still when the smoothed magnitude is below `stillnessThreshold`, Excessive only after the score has stayed at or above `excessiveLevel` for `excessiveHoldMs` and only while it remains there, Gesturing when the magnitude is at or above `gestureThreshold` and the label is not Excessive, and Moving otherwise. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it. Sampling still does no network I/O. The radio poll still sends at most one queued sample on a non-blocking link.

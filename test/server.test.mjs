@@ -37,7 +37,7 @@ async function browser(url) {
   return { socket, first: await first };
 }
 
-test("coach hello, heartbeat, sensor, and reserved buzz", async () => {
+test("coach hello, heartbeat, and sensor", async () => {
   const app = await startCoachServer({
     port: 0,
     standIn: false,
@@ -76,12 +76,6 @@ test("coach hello, heartbeat, sensor, and reserved buzz", async () => {
     assert.deepEqual(sample.accel, { x: 0.25, y: -0.5, z: 1.5 });
     assert.equal(sample.movement, 0);
     assert.equal(sample.transport, undefined);
-
-    const reserved = waitFor(page.socket, (message) => message.type === "error");
-    page.socket.send(JSON.stringify({ type: "buzz", frequency: 350, duration: 150 }));
-    const error = await reserved;
-    assert.equal(error.code, "reserved");
-    assert.equal(error.for, "buzz");
 
     const down = waitFor(page.socket, (message) => message.status === "disconnected");
     coach.close();
@@ -273,6 +267,96 @@ test("server scores samples and does not trust a coach movement field", async ()
     assert.equal(leaked, false);
     page.socket.close();
     again.close();
+  } finally {
+    await app.close();
+  }
+});
+
+test("one buzz is forwarded and a too-long duration is rejected", async () => {
+  const app = await startCoachServer({ port: 0, standIn: false });
+  try {
+    const page = await browser(`ws://127.0.0.1:${app.port}/ws`);
+    const coach = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    await opened(coach);
+    const up = waitFor(page.socket, (message) => message.status === "connected");
+    coach.send(JSON.stringify(deviceHello({ deviceId: "wrist-1" })));
+    await up;
+
+    const forwarded = waitFor(coach, (message) => message.type === "buzz");
+    const command = {
+      type: "buzz",
+      role: "browser",
+      frequency: 350,
+      duration: 150,
+      amplitude: 0.2,
+      timestamp: 1710000009000,
+    };
+    page.socket.send(JSON.stringify(command));
+    const heard = await forwarded;
+    assert.equal(heard.frequency, 350);
+    assert.equal(heard.duration, 150);
+    assert.equal(heard.amplitude, 0.2);
+    assert.equal(heard.timestamp, 1710000009000);
+    assert.equal(heard.played, undefined);
+
+    const ackWait = waitFor(page.socket, (message) => message.type === "buzz");
+    coach.send(JSON.stringify({
+      type: "buzz",
+      role: "device",
+      frequency: 350,
+      duration: 150,
+      amplitude: 0.2,
+      played: false,
+      timestamp: 1710000009100,
+    }));
+    const ack = await ackWait;
+    assert.equal(ack.played, false);
+    assert.equal(ack.frequency, 350);
+    assert.equal(ack.duration, 150);
+    assert.equal(ack.amplitude, 0.2);
+
+    let extra = false;
+    coach.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "buzz") extra = true;
+    });
+    const rejected = waitFor(page.socket, (message) => message.type === "error" && message.for === "buzz");
+    page.socket.send(JSON.stringify({ ...command, duration: 501, timestamp: 1710000009200 }));
+    const error = await rejected;
+    assert.equal(error.code, "invalid");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(extra, false);
+
+    page.socket.close();
+    coach.close();
+  } finally {
+    await app.close();
+  }
+});
+
+test("the development stand-in acknowledges a buzz with played false", async () => {
+  const app = await startCoachServer({ port: 0, standIn: true, standInStdio: "ignore" });
+  try {
+    const page = await browser(`ws://127.0.0.1:${app.port}/ws`);
+    if (page.first.status !== "connected") {
+      await waitFor(page.socket, (message) => message.status === "connected", 3000);
+    }
+    const ackWait = waitFor(page.socket, (message) => message.type === "buzz", 3000);
+    page.socket.send(JSON.stringify({
+      type: "buzz",
+      role: "browser",
+      frequency: 350,
+      duration: 150,
+      amplitude: 0.2,
+      timestamp: Date.now(),
+    }));
+    const ack = await ackWait;
+    assert.equal(ack.played, false);
+    assert.equal(ack.frequency, 350);
+    assert.equal(ack.duration, 150);
+    assert.equal(ack.amplitude, 0.2);
+    assert.notEqual(ack.played, true);
+    page.socket.close();
   } finally {
     await app.close();
   }

@@ -6,6 +6,7 @@ import {
   SESSION_STORAGE_KEY,
   averageMovement,
   readSessions,
+  recordBuzz,
   recordExcessive,
   recordGesture,
   recordSample,
@@ -138,4 +139,33 @@ test("a practice keeps gesture and excessive events and drops invented ones", ()
   assert.deepEqual(loaded.sessions[0].gestures, saved.gestures);
   assert.deepEqual(loaded.sessions[0].excessive, saved.excessive);
   assert.deepEqual(loaded.sessions[0].buzzes, []);
+});
+
+test("a manual buzz sent during practice is stored as not played", () => {
+  let session = startSession({ startedAt });
+  session = recordBuzz(session, {
+    timestamp: startedAt + 50,
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    played: false,
+  });
+  session = recordBuzz(session, {
+    timestamp: startedAt + 80,
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    played: true,
+  });
+  const saved = stopSession(session, startedAt + 200);
+  assert.deepEqual(saved.buzzes, [{
+    timestamp: startedAt + 50,
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    played: false,
+  }]);
+  const loaded = readSessions(JSON.stringify({ sessions: [saved] }));
+  assert.deepEqual(loaded.sessions[0].buzzes, saved.buzzes);
+  assert.equal(loaded.sessions[0].buzzes.some((event) => event.played === true), false);
 });

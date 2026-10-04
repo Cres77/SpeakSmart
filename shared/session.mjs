@@ -1,7 +1,7 @@
 /* Practice sessions. These are not slide decks and they are not coach messages.
  * The page stores them in localStorage under SESSION_STORAGE_KEY.
  * gestures and excessive hold events the motion rules recorded during that practice.
- * buzzes stays empty.
+ * buzzes holds manual buzz commands sent during that practice. played stays false.
  */
 
 import { CHART_BUCKET_MS } from "./intensity-series.mjs";
@@ -17,6 +17,20 @@ function gestureEvent(event) {
 function excessiveEvent(event) {
   if (!event || !Number.isFinite(event.timestamp) || !Number.isFinite(event.movement)) return null;
   return { timestamp: event.timestamp, movement: event.movement };
+}
+
+function buzzEvent(event) {
+  if (!event || event.played !== false) return null;
+  if (![event.timestamp, event.frequency, event.duration, event.amplitude].every((value) => Number.isFinite(value))) {
+    return null;
+  }
+  return {
+    timestamp: event.timestamp,
+    frequency: event.frequency,
+    duration: event.duration,
+    amplitude: event.amplitude,
+    played: false,
+  };
 }
 
 function transition(change) {
@@ -67,6 +81,12 @@ export function recordExcessive(session, event) {
   return { ...session, excessive: [...session.excessive, stored] };
 }
 
+export function recordBuzz(session, event) {
+  const stored = buzzEvent(event);
+  if (!session || !stored) return session;
+  return { ...session, buzzes: [...session.buzzes, stored] };
+}
+
 export function recordSample(session, sample) {
   if (!session || !sample) return session;
   const { timestamp, x, y, z, movement } = sample;
@@ -114,7 +134,13 @@ export function stopSession(session, stoppedAt) {
     transitions: session.transitions,
     gestures: session.gestures.map((event) => ({ timestamp: event.timestamp, magnitude: event.magnitude })),
     excessive: session.excessive.map((event) => ({ timestamp: event.timestamp, movement: event.movement })),
-    buzzes: [],
+    buzzes: session.buzzes.map((event) => ({
+      timestamp: event.timestamp,
+      frequency: event.frequency,
+      duration: event.duration,
+      amplitude: event.amplitude,
+      played: false,
+    })),
   };
 }
 
@@ -165,7 +191,7 @@ export function readSessions(raw) {
       transitions: Array.isArray(session.transitions) ? session.transitions.filter(isTransition).map(transition) : [],
       gestures: Array.isArray(session.gestures) ? session.gestures.map(gestureEvent).filter(Boolean) : [],
       excessive: Array.isArray(session.excessive) ? session.excessive.map(excessiveEvent).filter(Boolean) : [],
-      buzzes: [],
+      buzzes: Array.isArray(session.buzzes) ? session.buzzes.map(buzzEvent).filter(Boolean) : [],
     });
   }
   return { sessions };

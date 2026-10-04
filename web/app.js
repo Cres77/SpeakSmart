@@ -11,11 +11,13 @@ import {
   slidePosition,
 } from "/deck.mjs";
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
+import { BUZZ_STORAGE_KEY, buzzCommandError, createBuzzGuard, readBuzzSettings } from "/buzz.mjs";
 import { createMotionDetector } from "/motion.mjs";
 import {
   SESSION_STORAGE_KEY,
   averageMovement,
   readSessions,
+  recordBuzz,
   recordExcessive,
   recordGesture,
   recordSample,
@@ -30,6 +32,9 @@ const detail = document.querySelector("#coach-detail");
 const signal = document.querySelector("#coach-signal");
 const pageLink = document.querySelector("#page-link");
 const button = document.querySelector("#reconnect");
+const buzzSend = document.querySelector("#buzz-send");
+const buzzNote = document.querySelector("#buzz-note");
+const buzzGuard = createBuzzGuard();
 const sensorNote = document.querySelector("#sensor-note");
 const sensorTime = document.querySelector("#sensor-time");
 const accelX = document.querySelector("#accel-x");
@@ -313,6 +318,14 @@ function connectPage() {
       renderSample(message);
       return;
     }
+    if (message.type === "buzz") {
+      setBuzzNote("Command sent. No tone was played.");
+      return;
+    }
+    if (message.type === "error" && message.for === "buzz") {
+      setBuzzNote(message.message || "The buzz command was rejected.");
+      return;
+    }
     if (message.type !== "link") return;
     latestLink = message;
     const nextSession = Number.isInteger(message.session) ? message.session : chartSession;
@@ -352,6 +365,14 @@ fetch("/config.json")
     motionConfig = loaded;
     dashboardMotion = createMotionDetector(loaded);
     paintMotion(dashboardMotion.snapshot());
+    const stored = readBuzzSettings(localStorage.getItem(BUZZ_STORAGE_KEY), {
+      frequency: loaded.buzzFrequencyHz,
+      duration: loaded.buzzDurationMs,
+      amplitude: loaded.buzzAmplitude,
+    });
+    buzzFrequency.value = String(stored.frequency);
+    buzzDuration.value = String(stored.duration);
+    buzzAmplitude.value = String(stored.amplitude);
   })
   .catch(() => {});
 connectPage();
@@ -360,9 +381,16 @@ const viewDashboard = document.querySelector("#view-dashboard");
 const viewEditor = document.querySelector("#view-editor");
 const viewStage = document.querySelector("#view-stage");
 const viewPractice = document.querySelector("#view-practice");
+const viewSettings = document.querySelector("#view-settings");
 const navDashboard = document.querySelector("#nav-dashboard");
 const navPresentation = document.querySelector("#nav-presentation");
 const navPractice = document.querySelector("#nav-practice");
+const navSettings = document.querySelector("#nav-settings");
+const buzzFrequency = document.querySelector("#buzz-frequency");
+const buzzDuration = document.querySelector("#buzz-duration");
+const buzzAmplitude = document.querySelector("#buzz-amplitude");
+const buzzTest = document.querySelector("#buzz-test");
+const settingsBuzzNote = document.querySelector("#settings-buzz-note");
 const deckList = document.querySelector("#deck-list");
 const deckCreate = document.querySelector("#deck-create");
 const deckNameNew = document.querySelector("#deck-name-new");
@@ -447,11 +475,60 @@ function renderDecks() {
   stageBody.textContent = slide?.content ?? "";
 }
 
+function setBuzzNote(text) {
+  buzzNote.textContent = text;
+  settingsBuzzNote.textContent = text;
+}
+
+function currentBuzzSettings() {
+  return {
+    frequency: Number(buzzFrequency.value),
+    duration: Number(buzzDuration.value),
+    amplitude: Number(buzzAmplitude.value),
+  };
+}
+
+function saveBuzzForm() {
+  localStorage.setItem(BUZZ_STORAGE_KEY, JSON.stringify(currentBuzzSettings()));
+}
+
+function sendBuzz() {
+  const settings = currentBuzzSettings();
+  const problem = buzzCommandError(settings);
+  if (problem) {
+    setBuzzNote(problem);
+    return;
+  }
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    setBuzzNote("The page is not connected.");
+    return;
+  }
+  const now = Date.now();
+  if (!buzzGuard.trySend(now, settings.duration)) {
+    setBuzzNote("This pulse is still running.");
+    return;
+  }
+  const command = {
+    type: "buzz",
+    role: "browser",
+    frequency: settings.frequency,
+    duration: settings.duration,
+    amplitude: settings.amplitude,
+    timestamp: now,
+  };
+  if (practiceSession) {
+    practiceSession = recordBuzz(practiceSession, { ...command, played: false });
+  }
+  socket.send(JSON.stringify(command));
+  setBuzzNote("Command sent. Waiting for the coach.");
+}
+
 function markNav(which) {
   const entries = [
     [navDashboard, "dashboard"],
     [navPresentation, "presentation"],
     [navPractice, "practice"],
+    [navSettings, "settings"],
   ];
   for (const [item, name] of entries) {
     if (name === which) item.setAttribute("aria-current", "page");
@@ -465,6 +542,7 @@ function showDashboard() {
   viewEditor.hidden = true;
   viewStage.hidden = true;
   viewPractice.hidden = true;
+  viewSettings.hidden = true;
   markNav("dashboard");
   if (chart) requestAnimationFrame(() => {
     chart.resize();
@@ -478,6 +556,7 @@ function showEditor() {
   viewEditor.hidden = false;
   viewStage.hidden = true;
   viewPractice.hidden = true;
+  viewSettings.hidden = true;
   markNav("presentation");
   renderDecks();
 }
@@ -487,6 +566,7 @@ function showStage() {
   viewEditor.hidden = true;
   viewStage.hidden = false;
   viewPractice.hidden = true;
+  viewSettings.hidden = true;
   markNav("presentation");
   renderDecks();
   paintPracticeControls();
@@ -595,7 +675,7 @@ const sessionChartCanvas = document.querySelector("#session-chart");
 const sessionTransitions = document.querySelector("#session-transitions");
 const sessionGestures = document.querySelector("#session-gestures");
 const sessionExcessive = document.querySelector("#session-excessive");
-const sessionEvents = document.querySelector("#session-events");
+const sessionBuzzes = document.querySelector("#session-buzzes");
 
 let practiceSessions = readSessions(localStorage.getItem(SESSION_STORAGE_KEY));
 let practiceSession = null;
@@ -774,11 +854,21 @@ function openSession(id) {
   fillEventList(sessionExcessive, session.excessive, "No excessive movement.", (event) => {
     return `${formatWhen(event.timestamp)} · movement ${Math.round(event.movement * 100)}%`;
   });
-  sessionEvents.textContent = session.buzzes.length === 0
-    ? "No buzzes."
-    : session.buzzes.map((event) => formatWhen(event.timestamp)).join(", ");
+  fillEventList(sessionBuzzes, session.buzzes, "No buzzes.", (event) => {
+    return `${formatWhen(event.timestamp)} · ${event.frequency} Hz · ${event.duration} ms · amplitude ${event.amplitude} · not played`;
+  });
   paintSessionChart(session);
   requestAnimationFrame(() => sessionChart?.resize());
+}
+
+function showSettings() {
+  if (presenting) endPresentation();
+  viewDashboard.hidden = true;
+  viewEditor.hidden = true;
+  viewStage.hidden = true;
+  viewPractice.hidden = true;
+  viewSettings.hidden = false;
+  markNav("settings");
 }
 
 function showPractice() {
@@ -787,6 +877,7 @@ function showPractice() {
   viewEditor.hidden = true;
   viewStage.hidden = true;
   viewPractice.hidden = false;
+  viewSettings.hidden = true;
   sessionDetail.hidden = true;
   sessionListCard.hidden = false;
   markNav("practice");
@@ -794,6 +885,13 @@ function showPractice() {
 }
 
 navPractice.addEventListener("click", showPractice);
+navSettings.addEventListener("click", showSettings);
+buzzSend.addEventListener("click", sendBuzz);
+buzzTest.addEventListener("click", sendBuzz);
+for (const field of [buzzFrequency, buzzDuration, buzzAmplitude]) {
+  field.addEventListener("input", saveBuzzForm);
+  field.addEventListener("change", saveBuzzForm);
+}
 practiceStart.addEventListener("click", beginPractice);
 practiceStop.addEventListener("click", finishPractice);
 sessionBack.addEventListener("click", () => {

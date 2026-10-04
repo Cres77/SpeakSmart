@@ -18,7 +18,7 @@ test("phase 1 coach messages pass inspection", () => {
   assert.equal(inspectClientMessage(reconnectRequest()).type, "reconnect");
 });
 
-test("sensor x y z is accepted and buzz stays reserved", () => {
+test("sensor x y z is accepted and a manual buzz has limits", () => {
   const sensor = inspectClientMessage(deviceSensor({
     deviceId: "dev-stand-in",
     transport: "development-stand-in",
@@ -47,8 +47,62 @@ test("sensor x y z is accepted and buzz stays reserved", () => {
     magnitude: 1.4,
   });
   assert.equal(magnitude.code, "invalid");
-  const buzz = inspectClientMessage({ type: "buzz", frequency: 350, duration: 150 });
-  assert.equal(buzz.code, "reserved");
+  const buzz = inspectClientMessage({
+    type: "buzz",
+    role: "browser",
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    timestamp: 1710000000100,
+  });
+  assert.equal(buzz.ok, true);
+  assert.equal(buzz.role, "browser");
+  const tooLong = inspectClientMessage({
+    type: "buzz",
+    role: "browser",
+    frequency: 350,
+    duration: 501,
+    amplitude: 0.2,
+    timestamp: 1,
+  });
+  assert.equal(tooLong.code, "invalid");
+  const quiet = inspectClientMessage({
+    type: "buzz",
+    role: "browser",
+    frequency: 350,
+    duration: 0,
+    amplitude: 0.2,
+    timestamp: 1,
+  });
+  assert.equal(quiet.code, "invalid");
+  const low = inspectClientMessage({
+    type: "buzz",
+    role: "browser",
+    frequency: 49,
+    duration: 150,
+    amplitude: 0.2,
+    timestamp: 1,
+  });
+  assert.equal(low.code, "invalid");
+  const high = inspectClientMessage({
+    type: "buzz",
+    role: "browser",
+    frequency: 2001,
+    duration: 150,
+    amplitude: 0.2,
+    timestamp: 1,
+  });
+  assert.equal(high.code, "invalid");
+  const played = inspectClientMessage({
+    type: "buzz",
+    role: "device",
+    frequency: 350,
+    duration: 150,
+    amplitude: 0.2,
+    played: true,
+    timestamp: 1,
+  });
+  assert.equal(played.code, "invalid");
   const built = deviceSensor({
     deviceId: "dev-stand-in",
     transport: "development-stand-in",

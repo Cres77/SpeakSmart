@@ -1,4 +1,4 @@
-const RESERVED = new Set(["buzz"]);
+const RESERVED = new Set();
 const DEVICE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function nowMs() {
@@ -65,6 +65,7 @@ export function inspectClientMessage(message) {
   if (type === "disconnect") return inspectDisconnect(message);
   if (type === "reconnect") return inspectReconnect(message);
   if (type === "sensor") return inspectSensor(message);
+  if (type === "buzz") return inspectBuzz(message);
   return fail("unknown", "Unknown message type.", type);
 }
 
@@ -139,6 +140,34 @@ function inspectSensor(message) {
     return fail("invalid", "accel g must be a finite number when present.", "sensor");
   }
   return { ok: true, type: "sensor", role: "device" };
+}
+
+function inspectBuzz(message) {
+  if (!Number.isFinite(message.timestamp)) {
+    return fail("invalid", "buzz requires a numeric timestamp.", "buzz");
+  }
+  if (!Number.isFinite(message.frequency) || message.frequency < 50 || message.frequency > 2000) {
+    return fail("invalid", "buzz frequency must be from 50 to 2000 Hz.", "buzz");
+  }
+  if (!Number.isFinite(message.duration) || message.duration <= 0 || message.duration > 500) {
+    return fail("invalid", "buzz duration must be greater than 0 ms and at most 500 ms.", "buzz");
+  }
+  if (!Number.isFinite(message.amplitude)) {
+    return fail("invalid", "buzz requires a numeric amplitude.", "buzz");
+  }
+  if (message.role === "device") {
+    if (message.played !== false) {
+      return fail("invalid", "The coach acknowledgement must say the tone was not played.", "buzz");
+    }
+    return { ok: true, type: "buzz", role: "device" };
+  }
+  if (message.role !== undefined && message.role !== "browser") {
+    return fail("invalid", "buzz is sent by the website.", "buzz");
+  }
+  if (message.played !== undefined) {
+    return fail("invalid", "The website does not report playback.", "buzz");
+  }
+  return { ok: true, type: "buzz", role: "browser" };
 }
 
 function inspectReconnect(message) {

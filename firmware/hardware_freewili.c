@@ -74,12 +74,10 @@
  * connector, Y toward the buttons, Z out of the screen). That page does not
  * state the unit. FREE-WILi 2's motion part number was not confirmed here.
  *
- * VERIFIED speaker entry points for a later buzz, not called. No separate
- * buzzer API was found. A 350 Hz / 150 ms tone is expressible and was not
- * heard on hardware. Duration units differ:
- *   dev.io.audio.tone(frequency: float, duration_ms: float, amplitude: float)
- *   playSoundFromFrequencyAndDuration(float frequency, float duration,
- *     float amplitude, audioWaveType wavetype)
+ * VERIFIED speaker entry points, not called. No separate buzzer API exists.
+ * Do not invent one. Duration units differ and must not be mixed:
+ *   dev.io.audio.tone(frequency, duration_ms, amplitude)
+ *   playSoundFromFrequencyAndDuration(frequency, duration_seconds, amplitude, wavetype)
  *     frequency Hz, duration SECONDS, amplitude 1.0 max, 0.2 recommended
  *     https://raw.githubusercontent.com/freewili/fwwasm/master/include/fwwasm.h
  *   FreeWili.play_audio_tone(frequency_hz, duration_sec, amplitude,
@@ -113,4 +111,14 @@ HardwareResult hardware_accel_poll(HardwareAccelSample *sample) {
    * enable_motion_stream are intentionally not called.
    */
   return HARDWARE_NO_SAMPLE;
+}
+
+/* Host build. Neither speaker entry point is called.
+ * There is no buzzer API. The return is not-played. It is not success.
+ */
+HardwareResult buzz(float frequency_hz, float duration_ms, float amplitude) {
+  (void)frequency_hz;
+  (void)duration_ms;
+  (void)amplitude;
+  return HARDWARE_API_UNVERIFIED;
 }

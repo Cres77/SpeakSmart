@@ -36,6 +36,10 @@ const files = {
     file: join(root, "shared/config.json"),
     type: "application/json; charset=utf-8",
   },
+  "/buzz.mjs": {
+    file: join(root, "shared/buzz.mjs"),
+    type: "text/javascript; charset=utf-8",
+  },
   "/chart.js": {
     file: join(root, "node_modules/chart.js/dist/chart.umd.js"),
     type: "text/javascript; charset=utf-8",
@@ -245,6 +249,41 @@ export async function startCoachServer(options = {}) {
         role = "device";
         clearTimeout(helloTimer);
         adoptDevice(socket, message);
+        return;
+      }
+
+      if (result.type === "buzz" && result.role === "browser") {
+        if (role !== "browser") {
+          sendError(socket, { code: "invalid", type: "buzz", message: "Send hello before other coach messages." });
+          return;
+        }
+        if (!device) {
+          sendError(socket, { code: "invalid", type: "buzz", message: "No coach is connected." });
+          return;
+        }
+        sendJson(device, {
+          type: "buzz",
+          frequency: message.frequency,
+          duration: message.duration,
+          amplitude: message.amplitude,
+          timestamp: message.timestamp,
+        });
+        return;
+      }
+
+      if (result.type === "buzz" && result.role === "device") {
+        if (socket !== device) {
+          sendError(socket, { code: "invalid", type: "buzz", message: "Send hello before other coach messages." });
+          return;
+        }
+        sendBrowsers({
+          type: "buzz",
+          frequency: message.frequency,
+          duration: message.duration,
+          amplitude: message.amplitude,
+          played: false,
+          timestamp: message.timestamp,
+        });
         return;
       }
 
