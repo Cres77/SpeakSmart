@@ -8,7 +8,15 @@ const script = readFileSync(new URL("../web/app.js", import.meta.url), "utf8");
 test("page shows the coach link and accelerometer axes", () => {
   assert.match(html, /SpeakSmart/);
   assert.match(html, /wrist coach/i);
-  assert.match(html, /Slides come in a later phase/);
+  assert.match(html, /Practice recording comes in a later phase/);
+  assert.match(html, /id="nav-presentation"/);
+  assert.doesNotMatch(html, /id="nav-presentation"[^>]*disabled/);
+  assert.match(html, /id="nav-practice" disabled/);
+  assert.match(html, /id="nav-analytics" disabled/);
+  assert.match(html, /id="nav-settings" disabled/);
+  assert.match(html, /id="present-start"/);
+  assert.match(html, /id="present-end"/);
+  assert.match(script, /DECK_STORAGE_KEY/);
   assert.match(html, /id="intensity-value"/);
   assert.match(html, /id="intensity-meter"/);
   assert.match(html, /id="accel-x"/);

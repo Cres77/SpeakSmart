@@ -25,14 +25,14 @@
 
       <div class="body">
         <nav class="rail" aria-label="Primary">
-          <a href="/" aria-current="page">Dashboard</a>
-          <button type="button" disabled>Presentation <span class="later">Later</span></button>
-          <button type="button" disabled>Practice <span class="later">Later</span></button>
-          <button type="button" disabled>Analytics <span class="later">Later</span></button>
-          <button type="button" disabled>Settings <span class="later">Later</span></button>
+          <button type="button" id="nav-dashboard" aria-current="page">Dashboard</button>
+          <button type="button" id="nav-presentation">Presentation</button>
+          <button type="button" id="nav-practice" disabled>Practice <span class="later">Later</span></button>
+          <button type="button" id="nav-analytics" disabled>Analytics <span class="later">Later</span></button>
+          <button type="button" id="nav-settings" disabled>Settings <span class="later">Later</span></button>
         </nav>
 
-        <main>
+        <main id="view-dashboard">
           <section class="card" aria-labelledby="link-heading">
             <div class="card-head">
               <h2 id="link-heading">Coach link</h2>
@@ -84,11 +84,73 @@
 
           <section class="note">
             <h2>What comes next</h2>
-            <p>Slides come in a later phase. This page shows the link, the latest X, Y, and Z, intensity, and that intensity over the last minute.</p>
+            <p>Practice recording comes in a later phase. The dashboard shows the coach link, X, Y, and Z, intensity, and the last minute of movement.</p>
+          </section>
+        </main>
+
+        <main id="view-editor" hidden>
+          <section class="card" aria-labelledby="decks-heading">
+            <h2 id="decks-heading">Presentations</h2>
+            <p class="quiet">Saved in this browser. This is the slideshow, not a practice log.</p>
+            <div id="deck-list" class="decks"></div>
+            <form id="deck-create" class="create-row">
+              <label class="field grow">
+                <span>New presentation</span>
+                <input id="deck-name-new" name="name" maxlength="80" placeholder="Name this presentation" autocomplete="off" />
+              </label>
+              <button type="submit" class="primary">Create presentation</button>
+            </form>
+          </section>
+
+          <section class="card" id="deck-editor" hidden aria-labelledby="editor-heading">
+            <h2 id="editor-heading">Slides</h2>
+            <label class="field">
+              <span>Presentation name</span>
+              <input id="deck-title" maxlength="80" autocomplete="off" />
+            </label>
+            <p id="slide-count">Slide 1 of 1</p>
+            <div class="actions">
+              <button type="button" id="slide-prev">Previous</button>
+              <button type="button" id="slide-next">Next</button>
+            </div>
+            <label class="field">
+              <span>Slide title</span>
+              <input id="slide-title" class="slide-title" maxlength="120" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Content</span>
+              <textarea id="slide-body" rows="6" maxlength="4000"></textarea>
+            </label>
+            <div class="actions">
+              <button type="button" id="slide-add">Add slide</button>
+              <button type="button" id="slide-delete">Delete slide</button>
+              <button type="button" id="present-start" class="primary">Start presentation</button>
+            </div>
           </section>
         </main>
       </div>
     </div>
+
+    <section id="view-stage" class="stage" hidden aria-labelledby="stage-title">
+      <header class="stage-bar">
+        <p class="stage-quiet">
+          <span class="dot" id="stage-dot" data-status="connecting" aria-hidden="true"></span>
+          <span id="stage-status">Connecting</span>
+        </p>
+        <p class="stage-quiet">Intensity <span id="stage-intensity">—</span></p>
+        <p id="stage-timer">0:00</p>
+      </header>
+      <article class="stage-slide">
+        <p id="stage-count">Slide 1 of 1</p>
+        <h2 id="stage-title"></h2>
+        <p id="stage-body"></p>
+      </article>
+      <footer class="stage-controls">
+        <button type="button" id="stage-prev">Previous</button>
+        <button type="button" id="stage-next">Next</button>
+        <button type="button" id="present-end" class="primary">End presentation</button>
+      </footer>
+    </section>
     <script src="/chart.js"></script>
     <script type="module" src="/app.js"></script>
   </body>

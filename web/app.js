@@ -1,3 +1,15 @@
+import {
+  DECK_STORAGE_KEY,
+  addSlide,
+  createDeck,
+  deleteSlide,
+  editSlide,
+  nextSlide,
+  previousSlide,
+  readLibrary,
+  renameDeck,
+  slidePosition,
+} from "/deck.mjs";
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
 
 const label = document.querySelector("#coach-label");
@@ -15,6 +27,9 @@ const intensityValue = document.querySelector("#intensity-value");
 const intensityMeter = document.querySelector("#intensity-meter");
 const intensityBar = document.querySelector("#intensity-bar");
 const chartCanvas = document.querySelector("#intensity-chart");
+const stageStatus = document.querySelector("#stage-status");
+const stageDot = document.querySelector("#stage-dot");
+const stageIntensity = document.querySelector("#stage-intensity");
 const series = createIntensitySeries();
 let chartSession = null;
 
@@ -127,6 +142,7 @@ function clearSample() {
   intensityValue.textContent = "—";
   intensityBar.style.width = "0%";
   intensityMeter.setAttribute("aria-valuenow", "0");
+  stageIntensity.textContent = "—";
   sensorTime.textContent = "No sample yet";
   sensorNote.textContent = "Waiting for a sample.";
 }
@@ -142,6 +158,7 @@ function renderIntensity(movement) {
   intensityValue.textContent = `${percent}%`;
   intensityBar.style.width = `${percent}%`;
   intensityMeter.setAttribute("aria-valuenow", String(percent));
+  stageIntensity.textContent = `${percent}%`;
 }
 
 function renderSample(message) {
@@ -162,6 +179,8 @@ function applyStatus(status) {
   coachStatus = status;
   label.textContent = labels[coachStatus];
   dot.dataset.status = coachStatus;
+  stageStatus.textContent = labels[coachStatus];
+  stageDot.dataset.status = coachStatus;
   button.setAttribute("aria-busy", coachStatus === "connecting" ? "true" : "false");
   paintSignal();
   if (coachStatus === "disconnected") clearSample();
@@ -275,3 +294,201 @@ button.addEventListener("click", () => {
 
 setInterval(paintSignal, 1000);
 connectPage();
+
+const viewDashboard = document.querySelector("#view-dashboard");
+const viewEditor = document.querySelector("#view-editor");
+const viewStage = document.querySelector("#view-stage");
+const navDashboard = document.querySelector("#nav-dashboard");
+const navPresentation = document.querySelector("#nav-presentation");
+const deckList = document.querySelector("#deck-list");
+const deckCreate = document.querySelector("#deck-create");
+const deckNameNew = document.querySelector("#deck-name-new");
+const deckEditor = document.querySelector("#deck-editor");
+const deckTitle = document.querySelector("#deck-title");
+const slideCount = document.querySelector("#slide-count");
+const slideTitle = document.querySelector("#slide-title");
+const slideBody = document.querySelector("#slide-body");
+const slidePrev = document.querySelector("#slide-prev");
+const slideNext = document.querySelector("#slide-next");
+const slideAdd = document.querySelector("#slide-add");
+const slideDelete = document.querySelector("#slide-delete");
+const presentStart = document.querySelector("#present-start");
+const presentEnd = document.querySelector("#present-end");
+const stagePrev = document.querySelector("#stage-prev");
+const stageNext = document.querySelector("#stage-next");
+const stageCount = document.querySelector("#stage-count");
+const stageTitle = document.querySelector("#stage-title");
+const stageBody = document.querySelector("#stage-body");
+const stageTimer = document.querySelector("#stage-timer");
+
+let library = readLibrary(localStorage.getItem(DECK_STORAGE_KEY));
+let presenting = false;
+let presentationTimer = null;
+let runStarted = 0;
+let shownSlideId = null;
+
+function saveLibrary() {
+  localStorage.setItem(DECK_STORAGE_KEY, JSON.stringify(library));
+}
+
+function activeDeck() {
+  return library.decks.find((deck) => deck.id === library.activeId) ?? null;
+}
+
+function replaceDeck(next) {
+  library = {
+    activeId: next.id,
+    decks: library.decks.map((deck) => (deck.id === next.id ? next : deck)),
+  };
+  saveLibrary();
+  renderDecks();
+}
+
+function renderDecks() {
+  const deck = activeDeck();
+  deckList.replaceChildren();
+  for (const item of library.decks) {
+    const choice = document.createElement("button");
+    choice.type = "button";
+    choice.textContent = item.name;
+    if (item.id === library.activeId) choice.setAttribute("aria-current", "true");
+    choice.addEventListener("click", () => {
+      library = { ...library, activeId: item.id };
+      saveLibrary();
+      renderDecks();
+    });
+    deckList.append(choice);
+  }
+
+  deckEditor.hidden = !deck;
+  if (!deck) return;
+  if (document.activeElement !== deckTitle) deckTitle.value = deck.name;
+  slideCount.textContent = slidePosition(deck);
+  const slide = deck.slides[deck.index] ?? null;
+  const slideChanged = shownSlideId !== (slide?.id ?? null);
+  shownSlideId = slide?.id ?? null;
+  if (slideChanged || document.activeElement !== slideTitle) slideTitle.value = slide?.title ?? "";
+  if (slideChanged || document.activeElement !== slideBody) slideBody.value = slide?.content ?? "";
+  const atStart = !slide || deck.index <= 0;
+  const atEnd = !slide || deck.index >= deck.slides.length - 1;
+  slideTitle.disabled = !slide;
+  slideBody.disabled = !slide;
+  slideDelete.disabled = !slide;
+  presentStart.disabled = !slide;
+  slidePrev.disabled = atStart;
+  slideNext.disabled = atEnd;
+  stagePrev.disabled = atStart;
+  stageNext.disabled = atEnd;
+  stageCount.textContent = slidePosition(deck);
+  stageTitle.textContent = slide?.title ?? "";
+  stageBody.textContent = slide?.content ?? "";
+}
+
+function showDashboard() {
+  if (presenting) endPresentation();
+  viewDashboard.hidden = false;
+  viewEditor.hidden = true;
+  viewStage.hidden = true;
+  navDashboard.setAttribute("aria-current", "page");
+  navPresentation.removeAttribute("aria-current");
+  if (chart) requestAnimationFrame(() => {
+    chart.resize();
+    paintChart();
+  });
+}
+
+function showEditor() {
+  if (presenting) endPresentation();
+  viewDashboard.hidden = true;
+  viewEditor.hidden = false;
+  viewStage.hidden = true;
+  navDashboard.removeAttribute("aria-current");
+  navPresentation.setAttribute("aria-current", "page");
+  renderDecks();
+}
+
+function showStage() {
+  viewDashboard.hidden = true;
+  viewEditor.hidden = true;
+  viewStage.hidden = false;
+  navDashboard.removeAttribute("aria-current");
+  navPresentation.setAttribute("aria-current", "page");
+  renderDecks();
+}
+
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function startPresentation() {
+  const deck = activeDeck();
+  if (!deck || deck.slides.length === 0) return;
+  presenting = true;
+  runStarted = Date.now();
+  stageTimer.textContent = "0:00";
+  clearInterval(presentationTimer);
+  presentationTimer = setInterval(() => {
+    stageTimer.textContent = formatElapsed(Date.now() - runStarted);
+  }, 200);
+  showStage();
+}
+
+function endPresentation() {
+  presenting = false;
+  clearInterval(presentationTimer);
+  presentationTimer = null;
+}
+
+function step(direction) {
+  const deck = activeDeck();
+  if (!deck) return;
+  replaceDeck(direction === "next" ? nextSlide(deck) : previousSlide(deck));
+}
+
+navDashboard.addEventListener("click", showDashboard);
+navPresentation.addEventListener("click", showEditor);
+deckCreate.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const deck = createDeck(deckNameNew.value);
+  library = { activeId: deck.id, decks: [...library.decks, deck] };
+  deckNameNew.value = "";
+  saveLibrary();
+  renderDecks();
+});
+deckTitle.addEventListener("input", () => {
+  const deck = activeDeck();
+  if (deck) replaceDeck(renameDeck(deck, deckTitle.value));
+});
+deckTitle.addEventListener("blur", () => renderDecks());
+slideTitle.addEventListener("input", () => {
+  const deck = activeDeck();
+  const slide = deck?.slides[deck.index];
+  if (slide) replaceDeck(editSlide(deck, slide.id, { title: slideTitle.value }));
+});
+slideBody.addEventListener("input", () => {
+  const deck = activeDeck();
+  const slide = deck?.slides[deck.index];
+  if (slide) replaceDeck(editSlide(deck, slide.id, { content: slideBody.value }));
+});
+slideAdd.addEventListener("click", () => {
+  const deck = activeDeck();
+  if (deck) replaceDeck(addSlide(deck));
+});
+slideDelete.addEventListener("click", () => {
+  const deck = activeDeck();
+  const slide = deck?.slides[deck.index];
+  if (slide) replaceDeck(deleteSlide(deck, slide.id));
+});
+slidePrev.addEventListener("click", () => step("prev"));
+slideNext.addEventListener("click", () => step("next"));
+stagePrev.addEventListener("click", () => step("prev"));
+stageNext.addEventListener("click", () => step("next"));
+presentStart.addEventListener("click", startPresentation);
+presentEnd.addEventListener("click", showEditor);
+document.addEventListener("keydown", (event) => {
+  if (!presenting) return;
+  if (event.key === "ArrowRight") step("next");
+  if (event.key === "ArrowLeft") step("prev");
+  if (event.key === "Escape") showEditor();
+});

@@ -1,6 +1,6 @@
 # SpeakSmart coach
 
-The coach page shows Connected, Connecting, or Disconnected, the latest accelerometer X, Y, and Z, a movement intensity, and the last minute of that intensity. Reconnect asks the coach to join again.
+The coach page shows Connected, Connecting, or Disconnected, the latest accelerometer X, Y, and Z, a movement intensity, and the last minute of that intensity. Reconnect asks the coach to join again. Presentation holds slide decks in this browser.
 
 `presage/` is an existing webcam metrics proof of concept. It is separate from this coach and still runs on its own.
 
@@ -37,7 +37,7 @@ That runs the server tests and `make -C firmware test`. The firmware test checks
 
 `hardware_accel_poll` returns no sample. `fwwasm.h` does not define a sensor payload struct, and `enable_motion_stream` has no documented numeric frame, so neither is parsed. `hardware_wifi_join` still returns unverified and the device entry still exits 2.
 
-There is no slideshow, session recording, or buzzer. `buzz` stays reserved in [shared/PROTOCOL.md](shared/PROTOCOL.md). Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one.
+There is no session recording or buzzer. `buzz` stays reserved in [shared/PROTOCOL.md](shared/PROTOCOL.md). Intensity is a relative score in the sample's unknown units. The formula is only in `shared/movement.mjs`. The chart reads that score; it does not compute a second one. Slide decks are saved in the browser at `localStorage` key `speaksmart.decks`.
 
 ## Later phases
 
@@ -45,7 +45,7 @@ There is no slideshow, session recording, or buzzer. `buzz` stays reserved in [s
 2. Accelerometer X/Y/Z. Done for the protocol, page, and stand-in. The C binary does not read a device.
 3. Movement intensity. Done on the server and the page. The stand-in still sends raw X, Y, and Z. The C binary does not score samples.
 4. Live movement graph. Done on the page from the server's intensity. About 4 points per second, last 60 seconds. Cleared on disconnect and on a new coach hello.
-5. Presentation and slideshow.
+5. Presentation and slideshow. Done in the browser. Create a deck, edit slides, and present them with a timer. Leaving presentation mode ends it. Decks stay in `localStorage` under `speaksmart.decks`.
 6. Record practice sessions.
 7. Gesture and excessive-movement detection.
 8. FreeWili buzz commands.
