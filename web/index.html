@@ -74,6 +74,17 @@
             <p id="sensor-units">Units unknown. These values are not converted.</p>
           </section>
 
+          <section class="card" aria-labelledby="motion-heading">
+            <h2 id="motion-heading">Since this hello</h2>
+            <p id="motion-state">—</p>
+            <dl class="axes">
+              <div><dt>Gestures</dt><dd id="motion-gestures">0</dd></div>
+              <div><dt>Excessive</dt><dd id="motion-excessive">0</dd></div>
+              <div><dt>Stillness</dt><dd id="motion-stillness">—</dd></div>
+            </dl>
+            <p class="quiet">From samples since the latest coach hello. A disconnect or a new hello starts these over.</p>
+          </section>
+
           <section class="card chart-card" aria-labelledby="chart-heading">
             <h2 id="chart-heading">Movement</h2>
             <p id="chart-note">Last 60 seconds of intensity. A disconnect or a new coach hello clears this line.</p>
@@ -84,7 +95,7 @@
 
           <section class="note">
             <h2>What comes next</h2>
-            <p>A coaching summary comes in a later phase. The dashboard shows the coach link, X, Y, and Z, intensity, and the last minute of movement.</p>
+            <p>A coaching summary comes in a later phase. The dashboard shows the coach link, X, Y, and Z, intensity, the last minute of movement, and whether the current samples are still, gesturing, or excessive.</p>
           </section>
         </main>
 
@@ -147,6 +158,10 @@
             </div>
             <h3 id="session-slides-heading">Slides</h3>
             <ol id="session-transitions" class="transitions"></ol>
+            <h3>Gestures</h3>
+            <ol id="session-gestures" class="transitions"></ol>
+            <h3>Excessive movement</h3>
+            <ol id="session-excessive" class="transitions"></ol>
             <p id="session-events" class="quiet"></p>
           </section>
         </main>

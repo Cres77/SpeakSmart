@@ -39,3 +39,16 @@ test("a smaller change stays below 100%", () => {
   const score = settle(tracker, { x: threshold / 2, y: 0, z: 1 }, SMOOTH_WINDOW);
   assert.ok(score > 0.4 && score < 0.75, score);
 });
+
+test("smoothed magnitude is the length before dividing, and the first sample is not scored", () => {
+  const tracker = createMovementTracker(threshold);
+  const first = tracker.sample(0, 0, 1);
+  assert.equal(first, 0);
+  assert.equal(tracker.scored, false);
+  assert.equal(tracker.smoothedMagnitude, 0);
+  const score = settle(tracker, { x: threshold / 2, y: 0, z: 1 }, SMOOTH_WINDOW);
+  assert.equal(tracker.scored, true);
+  assert.ok(tracker.smoothedMagnitude > 0);
+  assert.ok(tracker.smoothedMagnitude < threshold);
+  assert.equal(score, tracker.smoothedMagnitude / threshold);
+});

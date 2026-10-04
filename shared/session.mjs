@@ -1,6 +1,7 @@
 /* Practice sessions. These are not slide decks and they are not coach messages.
  * The page stores them in localStorage under SESSION_STORAGE_KEY.
- * gestures, excessive, and buzzes stay empty until a later phase.
+ * gestures and excessive hold events the motion rules recorded during that practice.
+ * buzzes stays empty.
  */
 
 import { CHART_BUCKET_MS } from "./intensity-series.mjs";
@@ -8,8 +9,14 @@ import { CHART_BUCKET_MS } from "./intensity-series.mjs";
 export const SESSION_STORAGE_KEY = "speaksmart.sessions";
 export const SESSION_CAP_MS = 30 * 60 * 1000;
 
-function blankEvents() {
-  return { gestures: [], excessive: [], buzzes: [] };
+function gestureEvent(event) {
+  if (!event || !Number.isFinite(event.timestamp) || !Number.isFinite(event.magnitude)) return null;
+  return { timestamp: event.timestamp, magnitude: event.magnitude };
+}
+
+function excessiveEvent(event) {
+  if (!event || !Number.isFinite(event.timestamp) || !Number.isFinite(event.movement)) return null;
+  return { timestamp: event.timestamp, movement: event.movement };
 }
 
 function transition(change) {
@@ -42,8 +49,22 @@ export function startSession({ startedAt, slide } = {}) {
     capped: false,
     samples: [],
     transitions,
-    ...blankEvents(),
+    gestures: [],
+    excessive: [],
+    buzzes: [],
   };
+}
+
+export function recordGesture(session, event) {
+  const stored = gestureEvent(event);
+  if (!session || !stored) return session;
+  return { ...session, gestures: [...session.gestures, stored] };
+}
+
+export function recordExcessive(session, event) {
+  const stored = excessiveEvent(event);
+  if (!session || !stored) return session;
+  return { ...session, excessive: [...session.excessive, stored] };
 }
 
 export function recordSample(session, sample) {
@@ -91,7 +112,9 @@ export function stopSession(session, stoppedAt) {
     capped: session.capped === true,
     samples: session.samples,
     transitions: session.transitions,
-    ...blankEvents(),
+    gestures: session.gestures.map((event) => ({ timestamp: event.timestamp, magnitude: event.magnitude })),
+    excessive: session.excessive.map((event) => ({ timestamp: event.timestamp, movement: event.movement })),
+    buzzes: [],
   };
 }
 
@@ -140,7 +163,9 @@ export function readSessions(raw) {
         movement: sample.movement,
       })) : [],
       transitions: Array.isArray(session.transitions) ? session.transitions.filter(isTransition).map(transition) : [],
-      ...blankEvents(),
+      gestures: Array.isArray(session.gestures) ? session.gestures.map(gestureEvent).filter(Boolean) : [],
+      excessive: Array.isArray(session.excessive) ? session.excessive.map(excessiveEvent).filter(Boolean) : [],
+      buzzes: [],
     });
   }
   return { sessions };

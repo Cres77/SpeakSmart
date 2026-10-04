@@ -2,13 +2,18 @@
 #define SPEAKSMART_COACH_CONFIG_H
 
 /* Keep these literals in sync with shared/config.json.
- * Thresholds are stored for later phases. Phase 1 does not apply them.
+ * The page reads the JSON. Firmware does not apply these thresholds.
  */
 
 #define COACH_SAMPLE_RATE_HZ 50
 #define COACH_MOVEMENT_THRESHOLD 0.35
 #define COACH_GESTURE_THRESHOLD 1.2
+#define COACH_GESTURE_MIN_DURATION_MS 200
+#define COACH_GESTURE_COOLDOWN_MS 400
 #define COACH_STILLNESS_THRESHOLD 0.08
+#define COACH_EXCESSIVE_LEVEL 0.75
+#define COACH_EXCESSIVE_HOLD_MS 1000
+#define COACH_EXCESSIVE_COOLDOWN_MS 3000
 #define COACH_BUZZ_COOLDOWN_MS 2000
 #define COACH_BUZZ_FREQUENCY_HZ 350
 #define COACH_BUZZ_DURATION_MS 150

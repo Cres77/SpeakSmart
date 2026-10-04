@@ -37,6 +37,13 @@ test("page shows the coach link and accelerometer axes", () => {
   }
   assert.match(script, /development-stand-in/);
   assert.match(script, /intensity-value/);
+  assert.match(html, /id="motion-state"/);
+  assert.match(html, /id="motion-gestures"/);
+  assert.match(html, /id="motion-excessive"/);
+  assert.match(html, /id="motion-stillness"/);
+  assert.match(html, /id="session-gestures"/);
+  assert.match(html, /id="session-excessive"/);
+  assert.match(script, /createMotionDetector/);
   assert.match(html, /id="intensity-chart"/);
   assert.match(html, /src="\/chart\.js"/);
   assert.match(script, /createIntensitySeries/);

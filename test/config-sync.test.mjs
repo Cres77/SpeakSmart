@@ -15,7 +15,12 @@ test("firmware config matches shared/config.json", () => {
   assert.equal(define("COACH_SAMPLE_RATE_HZ"), config.sampleRateHz);
   assert.equal(define("COACH_MOVEMENT_THRESHOLD"), config.movementThreshold);
   assert.equal(define("COACH_GESTURE_THRESHOLD"), config.gestureThreshold);
+  assert.equal(define("COACH_GESTURE_MIN_DURATION_MS"), config.gestureMinDurationMs);
+  assert.equal(define("COACH_GESTURE_COOLDOWN_MS"), config.gestureCooldownMs);
   assert.equal(define("COACH_STILLNESS_THRESHOLD"), config.stillnessThreshold);
+  assert.equal(define("COACH_EXCESSIVE_LEVEL"), config.excessiveLevel);
+  assert.equal(define("COACH_EXCESSIVE_HOLD_MS"), config.excessiveHoldMs);
+  assert.equal(define("COACH_EXCESSIVE_COOLDOWN_MS"), config.excessiveCooldownMs);
   assert.equal(define("COACH_BUZZ_COOLDOWN_MS"), config.buzzCooldownMs);
   assert.equal(define("COACH_BUZZ_FREQUENCY_HZ"), config.buzzFrequencyHz);
   assert.equal(define("COACH_BUZZ_DURATION_MS"), config.buzzDurationMs);

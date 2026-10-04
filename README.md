@@ -1,6 +1,6 @@
 # SpeakSmart coach
 
-The coach page shows Connected, Connecting, or Disconnected, the latest accelerometer X, Y, and Z, a movement intensity, and the last minute of that intensity. Reconnect asks the coach to join again. Presentation holds slide decks in this browser.
+The coach page shows Connected, Connecting, or Disconnected, the latest accelerometer X, Y, and Z, a movement intensity, and the last minute of that intensity. It also shows Still, Gesturing, or Excessive since the latest coach hello, with gesture and excessive counts and a stillness percent. Reconnect asks the coach to join again. Presentation holds slide decks in this browser.
 
 `presage/` is an existing webcam metrics proof of concept. It is separate from this coach and still runs on its own.
 
@@ -46,10 +46,10 @@ That runs the server tests and `make -C firmware test`. The firmware test checks
 3. Movement intensity. Done on the server and the page. The stand-in still sends raw X, Y, and Z. The C binary does not score samples.
 4. Live movement graph. Done on the page from the server's intensity. About 4 points per second, last 60 seconds. Cleared on disconnect and on a new coach hello.
 5. Presentation and slideshow. Done in the browser. Create a deck, edit slides, and present them with a timer. Leaving presentation mode ends it. Decks stay in `localStorage` under `speaksmart.decks`.
-6. Record practice sessions. Done in the browser. Start practice while presenting, then review the saved session under Practice. Sessions stay in `localStorage` under `speaksmart.sessions`, separate from decks. Gesture, excessive-movement, and buzz lists are stored empty.
-7. Gesture and excessive-movement detection.
+6. Record practice sessions. Done in the browser. Start practice while presenting, then review the saved session under Practice. Sessions stay in `localStorage` under `speaksmart.sessions`, separate from decks.
+7. Gesture and excessive-movement detection. Done on the page from the server's smoothed magnitude and movement score. A practice review lists the events from that practice. Buzz stays empty. No tone and no coaching sentence.
 8. FreeWili buzz commands.
 9. Automatic buzz with cooldown.
 10. Session analytics and coaching summary.
 
-Thresholds for later phases already live in `shared/config.json`: sample rate, movement, gesture, stillness, and buzz cooldown, frequency, duration, and amplitude.
+Thresholds live in `shared/config.json`: sample rate, movement, gesture magnitude and timing, stillness, excessive level and timing, and buzz cooldown, frequency, duration, and amplitude. The page reads that file. Firmware does not apply it.

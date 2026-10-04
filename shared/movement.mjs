@@ -10,6 +10,9 @@
  *
  * Intensity: length of that gap, averaged over the last 5 samples, divided by
  * movementThreshold. 1 means the smoothed gap is at the threshold. Larger gaps stay at 1.
+ * sample() still returns only that 0–1 score. smoothedMagnitude is the average
+ * length before the division, in the sample's unknown units. scored is false
+ * on the sample that only sets the baseline.
  */
 
 export const BASELINE_BLEND = 0.02;
@@ -18,6 +21,8 @@ export const SMOOTH_WINDOW = 5;
 export function createMovementTracker(movementThreshold) {
   let baseline = null;
   const recent = [];
+  let smoothedMagnitude = 0;
+  let scored = false;
 
   function score(magnitude) {
     recent.push(magnitude);
@@ -25,6 +30,7 @@ export function createMovementTracker(movementThreshold) {
     let sum = 0;
     for (const value of recent) sum += value;
     const average = sum / recent.length;
+    smoothedMagnitude = average;
     if (!Number.isFinite(movementThreshold) || movementThreshold <= 0) {
       return average > 0 ? 1 : 0;
     }
@@ -38,10 +44,19 @@ export function createMovementTracker(movementThreshold) {
     reset() {
       baseline = null;
       recent.length = 0;
+      smoothedMagnitude = 0;
+      scored = false;
+    },
+    get smoothedMagnitude() {
+      return smoothedMagnitude;
+    },
+    get scored() {
+      return scored;
     },
     sample(x, y, z) {
       if (baseline === null) {
         baseline = { x, y, z };
+        scored = false;
         return score(0);
       }
       const dx = x - baseline.x;
@@ -50,6 +65,7 @@ export function createMovementTracker(movementThreshold) {
       baseline.x += BASELINE_BLEND * dx;
       baseline.y += BASELINE_BLEND * dy;
       baseline.z += BASELINE_BLEND * dz;
+      scored = true;
       return score(Math.hypot(dx, dy, dz));
     },
   };

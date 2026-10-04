@@ -6,6 +6,8 @@ import {
   SESSION_STORAGE_KEY,
   averageMovement,
   readSessions,
+  recordExcessive,
+  recordGesture,
   recordSample,
   recordTransition,
   startSession,
@@ -113,5 +115,27 @@ test("the 30-minute cap refuses new samples and keeps earlier ones", () => {
   assert.equal(loaded.sessions[0].samples[0].x, 1);
   assert.deepEqual(loaded.sessions[0].gestures, []);
   assert.deepEqual(loaded.sessions[0].excessive, []);
+  assert.deepEqual(loaded.sessions[0].buzzes, []);
+});
+
+test("a practice keeps gesture and excessive events and drops invented ones", () => {
+  let session = startSession({ startedAt });
+  session = recordGesture(session, { timestamp: startedAt + 200, magnitude: 1.4, name: "wave" });
+  session = recordGesture(session, { timestamp: startedAt + 10 });
+  session = recordExcessive(session, { timestamp: startedAt + 1000, movement: 0.8 });
+  session = recordExcessive(session, { movement: 1 });
+  const saved = stopSession(session, startedAt + 5000);
+  assert.deepEqual(saved.gestures, [{ timestamp: startedAt + 200, magnitude: 1.4 }]);
+  assert.deepEqual(saved.excessive, [{ timestamp: startedAt + 1000, movement: 0.8 }]);
+  assert.deepEqual(saved.buzzes, []);
+  const loaded = readSessions(JSON.stringify({
+    sessions: [{
+      ...saved,
+      gestures: [...saved.gestures, { name: "wave" }],
+      buzzes: [{ at: 2 }],
+    }],
+  }));
+  assert.deepEqual(loaded.sessions[0].gestures, saved.gestures);
+  assert.deepEqual(loaded.sessions[0].excessive, saved.excessive);
   assert.deepEqual(loaded.sessions[0].buzzes, []);
 });

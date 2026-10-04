@@ -11,10 +11,13 @@ import {
   slidePosition,
 } from "/deck.mjs";
 import { CHART_WINDOW_MS, createIntensitySeries } from "/intensity-series.mjs";
+import { createMotionDetector } from "/motion.mjs";
 import {
   SESSION_STORAGE_KEY,
   averageMovement,
   readSessions,
+  recordExcessive,
+  recordGesture,
   recordSample,
   recordTransition,
   startSession,
@@ -35,12 +38,19 @@ const accelZ = document.querySelector("#accel-z");
 const intensityValue = document.querySelector("#intensity-value");
 const intensityMeter = document.querySelector("#intensity-meter");
 const intensityBar = document.querySelector("#intensity-bar");
+const motionState = document.querySelector("#motion-state");
+const motionGestures = document.querySelector("#motion-gestures");
+const motionExcessive = document.querySelector("#motion-excessive");
+const motionStillness = document.querySelector("#motion-stillness");
 const chartCanvas = document.querySelector("#intensity-chart");
 const stageStatus = document.querySelector("#stage-status");
 const stageDot = document.querySelector("#stage-dot");
 const stageIntensity = document.querySelector("#stage-intensity");
 const series = createIntensitySeries();
 let chartSession = null;
+let motionConfig = null;
+let dashboardMotion = null;
+let practiceMotion = null;
 
 const labels = {
   connected: "Connected",
@@ -139,9 +149,41 @@ function paintChart() {
   chart.update("none");
 }
 
+function paintMotion(result) {
+  if (!result || result.state == null) {
+    motionState.textContent = "—";
+    motionGestures.textContent = "0";
+    motionExcessive.textContent = "0";
+    motionStillness.textContent = "—";
+    return;
+  }
+  motionState.textContent = result.state;
+  motionGestures.textContent = String(result.gestures);
+  motionExcessive.textContent = String(result.excessive);
+  motionStillness.textContent = `${Math.round(result.stillnessPercent * 100)}%`;
+}
+
 function clearChart() {
   series.reset();
   paintChart();
+  dashboardMotion?.reset();
+  practiceMotion?.reset();
+  paintMotion(dashboardMotion ? dashboardMotion.snapshot() : null);
+}
+
+function noteMotion(message) {
+  if (!message.scored || !dashboardMotion) return;
+  if (![message.timestamp, message.magnitude, message.movement].every((value) => Number.isFinite(value))) return;
+  const sample = {
+    timestamp: message.timestamp,
+    magnitude: message.magnitude,
+    movement: message.movement,
+  };
+  paintMotion(dashboardMotion.push(sample));
+  if (!practiceSession || !practiceMotion) return;
+  const practice = practiceMotion.push(sample);
+  if (practice.gestureEvent) practiceSession = recordGesture(practiceSession, practice.gestureEvent);
+  if (practice.excessiveEvent) practiceSession = recordExcessive(practiceSession, practice.excessiveEvent);
 }
 
 function clearSample() {
@@ -177,6 +219,7 @@ function renderSample(message) {
   accelZ.textContent = formatAxis(message.accel.z);
   renderIntensity(message.movement);
   if (series.push(message.timestamp, message.movement).action !== "ignore") paintChart();
+  noteMotion(message);
   noteSample(message);
   sensorTime.textContent = formatSampleTime(message.timestamp);
   const standIn = message.transport === "development-stand-in" || latestLink?.transport === "development-stand-in";
@@ -303,6 +346,14 @@ button.addEventListener("click", () => {
 });
 
 setInterval(paintSignal, 1000);
+fetch("/config.json")
+  .then((response) => response.json())
+  .then((loaded) => {
+    motionConfig = loaded;
+    dashboardMotion = createMotionDetector(loaded);
+    paintMotion(dashboardMotion.snapshot());
+  })
+  .catch(() => {});
 connectPage();
 
 const viewDashboard = document.querySelector("#view-dashboard");
@@ -542,6 +593,8 @@ const sessionAverage = document.querySelector("#session-average");
 const sessionCap = document.querySelector("#session-cap");
 const sessionChartCanvas = document.querySelector("#session-chart");
 const sessionTransitions = document.querySelector("#session-transitions");
+const sessionGestures = document.querySelector("#session-gestures");
+const sessionExcessive = document.querySelector("#session-excessive");
 const sessionEvents = document.querySelector("#session-events");
 
 let practiceSessions = readSessions(localStorage.getItem(SESSION_STORAGE_KEY));
@@ -579,6 +632,7 @@ function beginPractice() {
   const deck = activeDeck();
   const slide = deck?.slides[deck.index];
   const startedAt = Date.now();
+  practiceMotion = motionConfig ? createMotionDetector(motionConfig) : null;
   practiceSession = startSession({
     startedAt,
     slide: deck && slide ? {
@@ -602,6 +656,7 @@ function finishPractice() {
   if (!practiceSession) return;
   const saved = stopSession(practiceSession, Date.now());
   practiceSession = null;
+  practiceMotion = null;
   clearInterval(practiceTick);
   practiceTick = null;
   practiceSessions = { sessions: [saved, ...practiceSessions.sessions] };
@@ -671,6 +726,21 @@ function paintSessionChart(session) {
   sessionChart.update("none");
 }
 
+function fillEventList(list, events, emptyText, format) {
+  list.replaceChildren();
+  if (events.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = emptyText;
+    list.append(item);
+    return;
+  }
+  for (const event of events) {
+    const item = document.createElement("li");
+    item.textContent = format(event);
+    list.append(item);
+  }
+}
+
 function openSession(id) {
   const session = practiceSessions.sessions.find((item) => item.id === id);
   if (!session) return;
@@ -698,7 +768,15 @@ function openSession(id) {
     item.textContent = `${formatWhen(change.timestamp)} · ${label}`;
     sessionTransitions.append(item);
   }
-  sessionEvents.textContent = "Gesture, excessive-movement, and buzz lists are empty.";
+  fillEventList(sessionGestures, session.gestures, "No gestures.", (event) => {
+    return `${formatWhen(event.timestamp)} · magnitude ${event.magnitude.toFixed(2)}`;
+  });
+  fillEventList(sessionExcessive, session.excessive, "No excessive movement.", (event) => {
+    return `${formatWhen(event.timestamp)} · movement ${Math.round(event.movement * 100)}%`;
+  });
+  sessionEvents.textContent = session.buzzes.length === 0
+    ? "No buzzes."
+    : session.buzzes.map((event) => formatWhen(event.timestamp)).join(", ");
   paintSessionChart(session);
   requestAnimationFrame(() => sessionChart?.resize());
 }

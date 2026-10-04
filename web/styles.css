@@ -278,6 +278,12 @@ h2 {
   letter-spacing: -0.03em;
 }
 
+#motion-state {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
 #sensor-note,
 #sensor-time,
 #sensor-units,

@@ -28,6 +28,14 @@ const files = {
     file: join(root, "shared/session.mjs"),
     type: "text/javascript; charset=utf-8",
   },
+  "/motion.mjs": {
+    file: join(root, "shared/motion.mjs"),
+    type: "text/javascript; charset=utf-8",
+  },
+  "/config.json": {
+    file: join(root, "shared/config.json"),
+    type: "application/json; charset=utf-8",
+  },
   "/chart.js": {
     file: join(root, "node_modules/chart.js/dist/chart.umd.js"),
     type: "text/javascript; charset=utf-8",
@@ -267,6 +275,7 @@ export async function startCoachServer(options = {}) {
       }
 
       if (result.type === "sensor") {
+        const movement = movementTracker.sample(message.accel.x, message.accel.y, message.accel.z);
         const reading = {
           type: "sensor",
           role: "device",
@@ -277,7 +286,9 @@ export async function startCoachServer(options = {}) {
             y: message.accel.y,
             z: message.accel.z,
           },
-          movement: movementTracker.sample(message.accel.x, message.accel.y, message.accel.z),
+          movement,
+          magnitude: movementTracker.smoothedMagnitude,
+          scored: movementTracker.scored,
         };
         if (Number.isFinite(message.accel.g)) reading.accel.g = message.accel.g;
         if (transport) reading.transport = transport;

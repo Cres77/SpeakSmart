@@ -1,6 +1,6 @@
 # SpeakSmart coach protocol
 
-JSON text frames on a WebSocket. One JSON object is one message. Timestamps are integer milliseconds. The coach sends one raw accelerometer sample per `sensor` message. The server computes movement intensity and adds it when it forwards that sample to the browser.
+JSON text frames on a WebSocket. One JSON object is one message. Timestamps are integer milliseconds. The coach sends one raw accelerometer sample per `sensor` message. The server computes movement intensity and the smoothed magnitude and adds them when it forwards that sample to the browser.
 
 The local server is the hub. The browser and the coach are both clients of that server. A development stand-in can speak the coach side so the page can be exercised without hardware. Its `transport` is `development-stand-in`. That process is not a FreeWili.
 
@@ -100,7 +100,7 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
 
 `session` starts at 0 and increases by one on each coach `hello`. Heartbeats keep the same number. The page uses it to tell a new hello from a heartbeat.
 
-`sensor` — the coach sample, plus the server's intensity. `movement` is a number from 0 to 1. 1 means 100%. The browser does not calculate it.
+`sensor` — the coach sample, plus the server's intensity and smoothed magnitude. `movement` is a number from 0 to 1. 1 means 100%. `magnitude` is the smoothed baseline-removed length in the sample's unknown units, before dividing by `movementThreshold`. `scored` is false on the sample that only sets the baseline; that sample is not a stillness, gesture, or excessive-movement sample. The browser does not calculate intensity or magnitude.
 
 ```json
 {
@@ -110,11 +110,13 @@ A coach `sensor` that includes `movement` is rejected with `code: "invalid"`. Th
   "deviceId": "dev-stand-in",
   "transport": "development-stand-in",
   "accel": { "x": 0.25, "y": -0.5, "z": 1.5 },
-  "movement": 0.42
+  "movement": 0.42,
+  "magnitude": 0.147,
+  "scored": true
 }
 ```
 
-`transport` is the value from the coach `hello`. `g` is copied onto `accel` only when the coach sent a finite `g`.
+`transport` is the value from the coach `hello`. `g` is copied onto `accel` only when the coach sent a finite `g`. A coach-supplied `magnitude` is rejected the same way as a coach-supplied `movement`.
 
 Intensity is one formula, in `shared/movement.mjs`, applied by the server:
 
@@ -126,6 +128,8 @@ Intensity is one formula, in `shared/movement.mjs`, applied by the server:
 A new coach `hello` starts a new baseline. Disconnecting clears it.
 
 The page plots `movement` as 0–100% against the sample timestamp. It does not plot X, Y, or Z. Chart.js draws the line. The trace is not a server message.
+
+Gesture, stillness, and excessive movement use the same forwarded sample. They read `shared/config.json`. A gesture candidate begins when `magnitude` reaches `gestureThreshold` (1.2) and counts once if it stays there for `gestureMinDurationMs` (200). After that gesture ends, new candidates wait `gestureCooldownMs` (400). A sample is still when `magnitude` is below `stillnessThreshold` (0.08). Excessive movement begins when `movement` stays at or above `excessiveLevel` (0.75) for `excessiveHoldMs` (1000), then waits `excessiveCooldownMs` (3000) before another episode can count. The page does not send buzz, play a tone, or write a coaching sentence.
 
 Downsample and window, in `shared/intensity-series.mjs`:
 
@@ -185,4 +189,4 @@ Neither documents a frequency range, so 300–400 Hz is expressible and not conf
 
 ## Limits
 
-Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. The server adds intensity on the sample it forwards to the browser. The page draws that intensity. Slideshow decks are kept in the browser under localStorage key `speaksmart.decks`. Practice sessions are a separate key, `speaksmart.sessions`. They are not coach messages. A session stores the start time, duration, downsampled samples, and slide changes. Its `gestures`, `excessive`, and `buzzes` arrays are empty. There is no calibration or coaching summary. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it. Sampling still does no network I/O. The radio poll still sends at most one queued sample on a non-blocking link.
+Live coach messages are hello, heartbeat, disconnect, and sensor, plus the reconnect handshake. The server adds intensity on the sample it forwards to the browser. The page draws that intensity. Slideshow decks are kept in the browser under localStorage key `speaksmart.decks`. Practice sessions are a separate key, `speaksmart.sessions`. They are not coach messages. A session stores the start time, duration, downsampled samples, and slide changes. During a practice, `gestures` and `excessive` store only the events those rules recorded in that practice: a timestamp, and the magnitude or movement score that met the rule. `buzzes` stays empty. There is no calibration or coaching summary. Frames larger than 4 KiB are dropped. If the radio link is down, the firmware keeps at most 8 samples and drops the oldest. A sample is removed from that queue only after the link accepts it. Sampling still does no network I/O. The radio poll still sends at most one queued sample on a non-blocking link.

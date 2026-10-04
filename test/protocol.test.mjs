@@ -38,6 +38,15 @@ test("sensor x y z is accepted and buzz stays reserved", () => {
     movement: 0.72,
   });
   assert.equal(scored.code, "invalid");
+  const magnitude = inspectClientMessage({
+    type: "sensor",
+    role: "device",
+    timestamp: 1,
+    deviceId: "wrist-1",
+    accel: { x: 0.12, y: 0.87, z: 9.71 },
+    magnitude: 1.4,
+  });
+  assert.equal(magnitude.code, "invalid");
   const buzz = inspectClientMessage({ type: "buzz", frequency: 350, duration: 150 });
   assert.equal(buzz.code, "reserved");
   const built = deviceSensor({

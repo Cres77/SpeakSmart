@@ -122,6 +122,9 @@ function inspectSensor(message) {
   if (message.movement !== undefined) {
     return fail("invalid", "A coach-supplied movement score is not used.", "sensor");
   }
+  if (message.magnitude !== undefined) {
+    return fail("invalid", "A coach-supplied magnitude is not used.", "sensor");
+  }
   if (message.transport !== undefined && typeof message.transport !== "string") {
     return fail("invalid", "transport must be a string.", "sensor");
   }

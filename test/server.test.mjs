@@ -214,6 +214,8 @@ test("server scores samples and does not trust a coach movement field", async ()
     const forwarded = await incoming;
     forwarded.forEach((message, index) => {
       assert.equal(message.movement, tracker.sample(samples[index].x, samples[index].y, samples[index].z));
+      assert.equal(message.magnitude, tracker.smoothedMagnitude);
+      assert.equal(message.scored, index !== 0);
       assert.equal(message.transport, undefined);
       assert.equal(Object.hasOwn(message, "movement"), true);
     });
